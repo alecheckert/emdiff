@@ -5,6 +5,7 @@ between subsequent jumps
 
 """
 import numpy as np
+from .utils import track_length
 
 def calc_le(tracks, pixel_size_um=0.16, pos_cols=['y', 'x']):
     """
@@ -31,10 +32,14 @@ def calc_le(tracks, pixel_size_um=0.16, pos_cols=['y', 'x']):
 
         The shared dependence of the measured jumps on e2 induces 
         a negative covariance between the measured jump lengths. This
-        covariance is equal to the negative variance of the localization
-        error, and provides an experimental route to measuring the 
+        covariance is negative with absolute magnitude equal to 
+        the variance involved in estimating the second point's position
+        (that is, the variance of e2).
+
+        This provides an experimental route to measuring the 
         localization error for moving particles when the motion is 
-        a Markov process. 
+        a Markov process. If the motion is not a Markov process,
+        this won't work.
 
     args
     ----
@@ -57,7 +62,7 @@ def calc_le(tracks, pixel_size_um=0.16, pos_cols=['y', 'x']):
     tracks = tracks.sort_values(by=["trajectory", "frame"])
 
     # Convert to ndarray and from pixels to um
-    cols = ['trajectory', 'frame'] + list(post_cols)
+    cols = ['trajectory', 'frame'] + list(pos_cols)
     T = np.asarray(tracks[cols]) * pixel_size_um
 
     # Calculate jumps

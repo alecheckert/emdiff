@@ -6,8 +6,7 @@ em.py -- core expectation-maximization routine
 from copy import copy
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
-
+from .defoc import f_remain
 from .utils import (
     sum_squared_jumps
 )
@@ -21,7 +20,7 @@ INIT_DIFF_COEFS = {
 
 def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
     pos_cols=["y", "x"], loc_error=0.035, max_jumps_per_track=None,
-    start_frame=0, max_iter=1000, convergence=1.0e-6):
+    start_frame=0, max_iter=1000, convergence=1.0e-8, dz=np.inf):
     """
     Estimate the occupations and diffusion coefficients for a Brownian
     mixture model using an expectation-maximization routine.
@@ -43,6 +42,7 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
                             before stopping
         convergence     :   float, convergence criterion for the occupation
                             estimate
+        dz              :   float, focal depth in um
 
     returns
     -------
@@ -53,7 +53,11 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
         )
 
     """
+    # Localization variance
     le2 = loc_error ** 2
+
+    # Apparent diffusion coefficient of a completely immobile
+    # object due to localization error
     d_err = le2 / frame_interval
 
     # Only take points after the start frame
@@ -85,7 +89,7 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
     prev_occs = occs.copy()
 
     # Iterate until convergence or *max_iter* is reached
-    for iter_idx in tqdm(range(max_iter)):
+    for iter_idx in range(max_iter):
 
         # Determine the log likelihoods of each trajectory under
         # the present model
@@ -117,6 +121,12 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
         else:
             prev_occs[:] = occs[:]
 
+    # Correct for defocalization
+    if (not dz is None) and (not dz is np.inf):
+        corr = np.zeros(n_states)
+        for i, D in enumerate(diff_coefs):
+            corr[i] = f_remain(D, 1, frame_interval, dz)[0]
+        occs /= corr
+        occs /= occs.sum()
+
     return occs, diff_coefs
-
-

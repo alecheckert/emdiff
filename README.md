@@ -37,12 +37,12 @@ localization error.
 ## Expected input
 
 `emdiff` takes trajectories as a `pandas.DataFrame`. Each row of 
-the dataframe should correspond to a localization in the 
-trajectory. The dataframe must contain at minimum:
+the dataframe should correspond to a localization from an SPT
+experiment. The dataframe must contain at minimum:
 
- - a `trajectory` column, with the index of the corresponding trajectory;
+ - a `trajectory` column, with the index of the trajectory to which that localization corresponds;
  - a `frame` column, with the index of the corresponding frame;
- - position columns such as `y` and `x`
+ - columns such as `y` and `x` with the spatial coordinates of the localization **in pixels**
 
 ## Example usage
 ```
@@ -52,10 +52,33 @@ trajectory. The dataframe must contain at minimum:
         n_states=2,
         pixel_size_um=1.0,       # um
         frame_interval=0.00748,  # seconds
-        loc_error=0.035,         # um
+        loc_error=0.035          # um
     )
 ```
 
 ## What do I do with the result?
 
 Up to you.
+
+## But I don't know the localization error for my experiment.
+
+There are various ways to estimate the localization
+error in an SPT experiment. `emdiff` provides one:
+```
+    from emdiff import calc_le
+    loc_error = calc_le(
+        tracks, 
+        pixel_size_um=0.16,
+        pos_cols=['y', 'x']
+    )
+```
+
+The localization error represents the root 1D localization variance,
+estimated using the covariance between subsequent displacements in 
+a set of trajectories. It gets more accurate as you use more 
+trajectories.
+
+If this localization error seems large, then that's probably 
+because it actually is. Moving molecules produce a lot of error.
+
+
