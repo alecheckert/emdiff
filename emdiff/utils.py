@@ -4,6 +4,8 @@ utils.py
 """
 import numpy as np
 import pandas as pd
+from scipy.special import gamma, gammainc
+from .defoc import f_remain 
 
 def drop_col(df, col):
     """
@@ -307,6 +309,77 @@ def rad_disp_histogram(tracks, n_frames=4, pos_cols=["y", "x"], bin_size=0.001,
             H[t-1,:] = np.histogram(r_disps, bins=bin_edges)[0]
 
     return H, bin_edges
+
+def evaluate_diffusion_model(bin_edges, occs, diff_coefs, n_dimensions,
+    frame_interval=0.00748, loc_error=0.0, dz=None, n_frames=4):
+    """
+    Evaluate the jump length distribution for a normal diffusive 
+    mixture model at some number of frame intervals.
+
+    args
+    ----
+        bin_edges           :   1D ndarray of shape (n_bins,), the edge
+                                of each spatial bin in um
+        occs                :   1D ndarray of shape (n_states,), the 
+                                fractional occupations of each diffusive state
+        diff_coefs          :   1D ndarray of shape (n_states,), the 
+                                diffusion coefficients corresponding to 
+                                each state in um^2 s^-1
+        n_dimensions        :   int, the number of spatial dimensions
+        frame_interval      :   float, time between frames in seconds
+        loc_error           :   float, localization error in um
+        dz                  :   float, focal depth in um
+        n_frames            :   int, the number of frame delays over which 
+                                to compute the PMF and CDF
+
+    returns
+    -------
+        (
+            2D ndarray of shape (n_frames, n_bins), the normalized PMF;
+            2D ndarray of shape (n_frames, n_bins), the normalized CDF
+        )
+
+    """
+    n_states = len(occs)
+    le2 = loc_error ** 2
+
+    # Size of the radial displacement bins in um
+    bin_size = bin_edges[1] - bin_edges[0]
+    r2 = bin_edges[1:] ** 2
+
+    # Centers of each radial displacement bin
+    bin_c = bin_edges[:-1] + bin_size * 0.5
+    r2_c = bin_c ** 2
+    rdim_c = np.power(bin_c, n_dimensions-1)
+    n_bins = bin_c.shape[0]
+
+    pmf = np.zeros((n_frames, n_bins), dtype=np.float64)
+    cdf = np.zeros((n_frames, n_bins), dtype=np.float64)
+
+    # Calculate the contribution to the PMF and CDF from each state
+    for j in range(n_states):
+        D = diff_coefs[j]
+        occ = occs[j]
+
+        defoc_mod = f_remain(D, n_frames, frame_interval, dz)
+        for i in range(n_frames):
+
+            # Spatial variance of this state at this frame interval
+            var2 = 4 * (D * frame_interval * (i+1) + le2)
+
+            # Contribution to the PMF
+            pmf[i,:] += (occ * defoc_mod[i] * 2 * rdim_c * np.exp(-r2_c / var2) / \
+                (np.power(var2, n_dimensions/2.0) * gamma(n_dimensions/2.0)))
+
+            # Contribution to the CDF
+            cdf[i,:] += (occ * defoc_mod[i] * gammainc(n_dimensions/2.0, \
+                r2 / var2))
+
+    # Normalize
+    pmf = (pmf.T / pmf.sum(axis=1)).T
+    cdf = (cdf.T / cdf[:,-1]).T
+
+    return pmf, cdf 
 
 def coarsen_histogram(jump_length_histo, bin_edges, factor):
     """

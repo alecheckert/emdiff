@@ -51,9 +51,28 @@ experiment. The dataframe must contain at minimum:
     state_occupations, diff_coefs = emdiff(
         tracks,
         n_states=2,
-        pixel_size_um=1.0,       # um
+        pixel_size_um=0.16,      # um
         frame_interval=0.00748,  # seconds
         loc_error=0.035          # um
+    )
+```
+
+## Example usage with plots
+```
+    from emdiff import emdiff
+
+    # The output prefix for the plots, which are saved as PNGs
+    plot_prefix = "my_dataset_name_emdiff_fits"
+
+    # Run the core EM routine
+    state_occupations, diff_coefs = emdiff(
+        tracks,
+        n_states=2,
+        pixel_size_um=0.16,
+        frame_interval=0.00748,
+        loc_error=0.035,
+        plot=True,
+        plot_prefix=plot_prefix
     )
 ```
 

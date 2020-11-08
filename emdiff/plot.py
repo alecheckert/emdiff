@@ -5,15 +5,35 @@ plot.py
 """
 import sys
 import os
+
+# Numeric
 import numpy as np
-from scipy.special import gammainc, gamma
+
+# Gaussian filtering for KDE
+from scipy.ndimage import gaussian_filter 
+
+# DataFrames
 import pandas as pd
+
+# Plotting
 import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib
 
+# Scalebars
+try:
+    from matplotlib_scalebar.scalebar import ScaleBar
+    scalebar_active = True
+except ModuleNotFoundError:
+    scalebar_active = False
+
+# Internal utilities
 from .defoc import f_remain 
-from .utils import rad_disp_histogram, coarsen_histogram
+from .utils import (
+    rad_disp_histogram,
+    evaluate_diffusion_model,
+    coarsen_histogram
+)
 
 # Use Arial font
 matplotlib.rcParams['font.family'] = 'sans-serif'
@@ -35,11 +55,54 @@ def savefig(out_png, dpi=800, show_result=True):
     if show_result and sys.platform == "darwin":
         os.system("open {}".format(out_png))
 
+def kill_ticks(axes, spines=True):
+    """
+    Remove ticks on a matplotlib.axes.Axes object. If *spines*,
+    also remove the spines.
+
+    """
+    axes.set_xticks([])
+    axes.set_yticks([])
+    if spines:
+        for s in ['top', 'bottom', 'left', 'right']:
+            axes.spines[s].set_visible(False)
+
 def plot_jump_length_dist(tracks, occs, diff_coefs, out_prefix, pos_cols=["y", "x"],
     n_frames=4, frame_interval=0.00748, pixel_size_um=0.16, loc_error=0.035,
     dz=None, max_jump=5.0, max_jump_pmf=2.0, cmap="gray", figsize_mod=1.0,
     n_gaps=0, use_entire_track=True, max_jumps_per_track=10):
+    """
+    Given a set of trajectories and a particular diffusive mixture model,
+    plot the observed and model radial jump histograms alongside each other.
+    
+    args
+    ----
+        tracks          :   pandas.DataFrame, with columns "trajectory", "frame",
+                            and the contents of *pos_cols*
+        occs            :   1D ndarray, fractional state occupations
+        diff_coefs      :   1D ndarray, diffusion coefficients for each 
+                            state in um^2 s^-1
+        out_prefix      :   str, the prefix for the output plots
+        pos_cols        :   list of str, positional coordinate columns 
+        n_frames        :   int, the number of time points to consider
+        frame_interval  :   float, the time between frames in seconds
+        pixel_size_um   :   float, size of pixels in um
+        loc_error       :   float, localization error in um
+        dz              :   float, focal depth in um
+        max_jump        :   float, the maximum jump length to show in um
+        max_jump_pmf    :   float, the maximum jump length to show in PMF plots
+        cmap            :   str, color palette to use for each jump length
+        figsize_mod     :   float, modifier for the default figure size
+        n_gaps          :   int, the number of gaps allowed during tracking
+        use_entire_track:   bool, use all jumps from every trajectory
+        max_jumps_per_track:    int. If *use_entire_track* is False, the maximum
+                                number of jumps per trajectory to consider
 
+    returns
+    -------
+        None; plots directly to output plots
+
+    """
     # Calculate radial displacement histograms for the trajectories
     # in this dataset
     H, bin_edges = rad_disp_histogram(tracks, n_frames=n_frames, 
@@ -301,73 +364,117 @@ def plot_jump_length_cdf(bin_edges, cdfs, model_cdfs=None, model_bin_edges=None,
 
     return fig, ax 
 
-def evaluate_diffusion_model(bin_edges, occs, diff_coefs, n_dimensions,
-    frame_interval=0.00748, loc_error=0.0, dz=None, n_frames=4):
+def spatial_dist(tracks, attrib_cols, out_png, pixel_size_um=0.16, bin_size=0.01,
+    kde_width=0.08, cmap="magma", cmap_perc=99.5):
     """
-    Evaluate the jump length distribution for a normal diffusive 
-    mixture model at some number of frame intervals.
+    Plot the spatial distribution of states for a set of trajectories.
 
     args
     ----
-        bin_edges           :   1D ndarray of shape (n_bins,), the edge
-                                of each spatial bin in um
-        occs                :   1D ndarray of shape (n_states,), the 
-                                fractional occupations of each diffusive state
-        diff_coefs          :   1D ndarray of shape (n_states,), the 
-                                diffusion coefficients corresponding to 
-                                each state in um^2 s^-1
-        n_dimensions        :   int, the number of spatial dimensions
-        frame_interval      :   float, time between frames in seconds
-        loc_error           :   float, localization error in um
-        dz                  :   float, focal depth in um
-        n_frames            :   int, the number of frame delays over which 
-                                to compute the PMF and CDF
-
-    returns
-    -------
-        (
-            2D ndarray of shape (n_frames, n_bins), the normalized PMF;
-            2D ndarray of shape (n_frames, n_bins), the normalized CDF
-        )
+        tracks          :   pandas.DataFrame, trajectories
+        attrib_cols     :   list of str, a set of columns in *tracks*, each
+                            corresponding to a diffusive state, giving 
+                            the likelihood of that state given the corresponding
+                            trajectory
+        out_png         :   str, output plot path
+        pixel_size_um   :   float, size of pixels in um
+        bin_size        :   float, size of the pixels in um
+        kde_width       :   float, size of the KDE kernel in um
+        cmap            :   str, color map 
 
     """
-    n_states = len(occs)
-    le2 = loc_error ** 2
+    n_states = len(attrib_cols)
 
-    # Size of the radial displacement bins in um
-    bin_size = bin_edges[1] - bin_edges[0]
-    r2 = bin_edges[1:] ** 2
+    # Spatial limits
+    n_pixels_y = int(tracks["y"].max()) + 1
+    n_pixels_x = int(tracks["x"].max()) + 1
 
-    # Centers of each radial displacement bin
-    bin_c = bin_edges[:-1] + bin_size * 0.5
-    r2_c = bin_c ** 2
-    rdim_c = np.power(bin_c, n_dimensions-1)
-    n_bins = bin_c.shape[0]
+    # Spatial binning strategy
+    n_bins_y = int(n_pixels_y * pixel_size_um / bin_size) + 2
+    n_um_y = n_bins_y * bin_size 
+    n_bins_x = int(n_pixels_x * pixel_size_um / bin_size) + 2
+    n_um_x = n_bins_x * bin_size
+    bin_edges_y = np.arange(0, n_um_y+bin_size, bin_size)
+    bin_edges_x = np.arange(0, n_um_x+bin_size, bin_size)
 
-    pmf = np.zeros((n_frames, n_bins), dtype=np.float64)
-    cdf = np.zeros((n_frames, n_bins), dtype=np.float64)
+    # Plot layout
+    M = n_states // 2 + 1 if (n_states % 2 == 1) else n_states // 2
+    fig, ax = plt.subplots(2, M+1, figsize=((n_states+1)*2.5, 6))
 
-    # Calculate the contribution to the PMF and CDF from each state
-    for j in range(n_states):
-        D = diff_coefs[j]
-        occ = occs[j]
+    # Raw localization density
+    H = np.histogram2d(
+        tracks['y'] * pixel_size_um,
+        tracks['x'] * pixel_size_um,
+        bins=(bin_edges_y, bin_edges_x)
+    )[0].astype(np.float64)
 
-        defoc_mod = f_remain(D, n_frames, frame_interval, dz)
-        for i in range(n_frames):
+    # KDE
+    loc_density = gaussian_filter(H, kde_width/bin_size)
+    ax[0,0].imshow(loc_density, cmap="gray", vmin=0,
+        vmax=np.percentile(loc_density, cmap_perc), origin="bottom")
+    ax[0,0].set_title("Localization density")
 
-            # Spatial variance of this state at this frame interval
-            var2 = 4 * (D * frame_interval * (i+1) + le2)
+    # The maximum likelihood state for each trajectory
+    X = np.asarray(tracks[attrib_cols])
+    max_l_states = np.argmax(X, axis=1)
 
-            # Contribution to the PMF
-            pmf[i,:] += (occ * defoc_mod[i] * 2 * rdim_c * np.exp(-r2_c / var2) / \
-                (np.power(var2, n_dimensions/2.0) * gamma(n_dimensions/2.0)))
+    # Scatter plot of maximum likelihood states
+    colors = sns.color_palette(cmap, n_states+1)
+    for j, attrib_col in enumerate(attrib_cols):
+        k = n_states - j - 1
+        exclude = pd.isnull(tracks[attrib_col])
+        include = np.logical_and(~exclude, max_l_states==k)
+        ax[1,0].scatter(
+            tracks.loc[include, "x"] * pixel_size_um,
+            tracks.loc[include, "y"] * pixel_size_um,
+            color=colors[j],
+            s=1.5,
+        )
+        ax[1,0].set_aspect("equal")       
+    ax[1,0].set_title("Maximum likelihood state")
 
-            # Contribution to the CDF
-            cdf[i,:] += (occ * defoc_mod[i] * gammainc(n_dimensions/2.0, \
-                r2 / var2))
+    # Spatial distribution of likelihoods for each state
+    for j, attrib_col in enumerate(attrib_cols):
 
-    # Normalize
-    pmf = (pmf.T / pmf.sum(axis=1)).T
-    cdf = (cdf.T / cdf[:,-1]).T
+        # Do not include singlets
+        exclude = pd.isnull(tracks[attrib_col])
 
-    return pmf, cdf 
+        # Make a histogram of the likelihood
+        H = np.histogram2d(
+            tracks.loc[~exclude, 'y'] * pixel_size_um,
+            tracks.loc[~exclude, 'x'] * pixel_size_um,
+            bins=(bin_edges_y, bin_edges_x),
+            weights=tracks.loc[~exclude, attrib_col]
+        )[0].astype(np.float64)
+
+        # Kernel density estimate
+        kde = gaussian_filter(H, kde_width/bin_size)
+        ax_y = j % 2
+        ax_x = j // 2
+        ax[ax_y, ax_x+1].imshow(kde, cmap="inferno", vmin=0,
+            vmax=np.percentile(kde, cmap_perc), origin="bottom")
+        ax[ax_y, ax_x+1].set_title("State %d" % (j+1))
+
+    # Add scale bars, if matplotlib_scalebar is installed
+    if scalebar_active:
+        s = ScaleBar(bin_size, "um", frameon=False, color="w",
+            location="lower right")
+        ax[0,0].add_artist(s)
+
+        for j in range(n_states):
+            ax_y = j % 2
+            ax_x = j // 2
+            s = ScaleBar(bin_size, "um", frameon=False, color="w",
+                location="lower right")
+            ax[ax_y,ax_x+1].add_artist(s)
+
+    # Remove the ticks
+    for i in range(2):
+        for j in range(M+1):
+            kill_ticks(ax[i,j])
+
+    # Save figure
+    savefig(out_png)
+
+
+

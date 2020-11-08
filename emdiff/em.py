@@ -10,7 +10,7 @@ from .defoc import f_remain
 from .utils import (
     sum_squared_jumps
 )
-from .plot import plot_jump_length_dist
+from .plot import plot_jump_length_dist, spatial_dist
 
 INIT_DIFF_COEFS = {
     1: np.array([1.0]),
@@ -22,7 +22,7 @@ INIT_DIFF_COEFS = {
 def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
     pos_cols=["y", "x"], loc_error=0.035, max_jumps_per_track=None,
     start_frame=0, max_iter=1000, convergence=1.0e-8, dz=np.inf,
-    return_tracks=False, plot=False, plot_prefix="emdiff_default_out"):
+    plot=False, plot_prefix="emdiff_default_out"):
     """
     Estimate the occupations and diffusion coefficients for a Brownian
     mixture model using an expectation-maximization routine.
@@ -45,24 +45,21 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
         convergence     :   float, convergence criterion for the occupation
                             estimate
         dz              :   float, focal depth in um
-        return_tracks   :   bool, also return the original set of trajectories
-                            with the final likelihoods for each diffusive
-                            state mapped back to the origin trajectories
         plot            :   bool, make plots of the result
         plot_prefix     :   str, prefix for output plots
 
     returns
     -------
-        If not return_tracks:
-            (
-                1D ndarray of shape (n_states,), the occupations;
-                1D ndarray of shape (n_states,), the corresponding 
-                    diffusion coefficients in um^2 s^-1
-            )
-
-        Otherwise, an extra return value - the original pandas.DataFrame
-        of trajectories with new columns for the likelihoods of each 
-        diffusive state - will be the third return value.
+        (
+            1D ndarray of shape (n_states,), the occupations;
+            1D ndarray of shape (n_states,), the corresponding 
+                diffusion coefficients in um^2 s^-1;
+            pandas.DataFrame, the original trajectories with extra
+                columns corresponding to the likelihoods of each 
+                final diffusive state, given the corresponding
+                trajectory. Trajectories with only a single point
+                (``singlets'') are assigned NaN in these columns.
+        )
 
     """
     # Check for incompatible inputs
@@ -171,11 +168,23 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
     order = np.argsort(diff_coefs)
     occs = occs[order]
     diff_coefs = diff_coefs[order]
+    T = T[order, :]
+
+    # Map the state likelihoods back to the origin trajectories, if 
+    # desired
+    T = T / T.sum(axis=0)
+    L = L.set_index("trajectory")
+    for j in range(n_states):
+        c = "likelihood_state_%d" % j 
+        L[c] = T[j,:]
+        tracks[c] = tracks["trajectory"].map(L[c])
 
     # Plot the result, if desired
     if plot:
         use_entire_track = (not max_jumps_per_track is None) and \
             (not max_jumps_per_track is np.inf)
+
+        # Plot jump length histograms
         plot_jump_length_dist(tracks, occs, diff_coefs, plot_prefix, 
             pos_cols=pos_cols, n_frames=4, frame_interval=frame_interval,
             pixel_size_um=pixel_size_um, loc_error=loc_error, dz=dz,
@@ -183,19 +192,13 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
             n_gaps=0, use_entire_track=use_entire_track,
             max_jumps_per_track=max_jumps_per_track)
 
-    # Map the state likelihoods back to the origin trajectories, if 
-    # desired
-    if return_tracks:
-        T = T[order, :]
-        T = T / T.sum(axis=0)
-        L = L.set_index("trajectory")
-        for j in range(n_states):
-            c = "likelihood_state_%d" % j 
-            L[c] = T[j,:]
-            tracks[c] = tracks["trajectory"].map(L[c])
-        return occs, diff_coefs, tracks 
-    else:
-        return occs, diff_coefs
+        # Plot the spatial distribution
+        spatial_dist_png = "{}_spatial_dist.png".format(plot_prefix)
+        attrib_cols = ["likelihood_state_%d" % j for j in range(n_states)]
+        spatial_dist(tracks, attrib_cols, spatial_dist_png, pixel_size_um=pixel_size_um,
+            bin_size=0.01, kde_width=0.1, cmap="magma", cmap_perc=99.5)
+
+    return occs, diff_coefs, tracks 
 
 def check_input(tracks, **kwargs):
     """
