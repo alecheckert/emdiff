@@ -24,7 +24,8 @@ trajectories before a start frame, but that's it.
 `emdiff` does not decide how many diffusive states are present
 in your data.
 
-`emdiff` does not provide any visualizations of the result.
+`emdiff` does not provide any visualizations of the result beyond
+the simple jump length histograms provided by the `plot` option.
 
 `emdiff` expects you to understand your own experiment, knowing
 the frame interval, approximate localization error, and pixel size.
@@ -83,3 +84,10 @@ If this localization error seems large, then that's probably
 because it actually is. Moving molecules produce a lot of error
 than the bound molecules that people usually measure localization
 error with.
+
+## Where can I find a description of the parameters to `emdiff`?
+
+For now, see the docstring to the function `emdiff.em.emdiff`. 
+In the future, you'll find a user guide in the `doc` folder to 
+this repository.
+

@@ -176,3 +176,172 @@ def sum_squared_jumps(tracks, pixel_size_um=0.16,
 
     return L 
 
+#########################
+## UTILITIES FOR PLOTS ##
+#########################
+
+def rad_disp_histogram(tracks, n_frames=4, pos_cols=["y", "x"], bin_size=0.001, 
+    max_jump=5.0, pixel_size_um=0.160, n_gaps=0, use_entire_track=False,
+    max_jumps_per_track=10):
+    """
+    Compile a histogram of radial displacements for a set of trajectories.
+
+    args
+    ----
+        tracks          :   pandas.DataFrame
+        n_frames        :   int, the number of frame delays to consider.
+                            A separate histogram is compiled for each
+                            frame delay.
+        pos_cols        :   list of str, the spatial coordinate columns
+        bin_size        :   float, the size of the bins in um. For typical
+                            experiments, this should not be changed because
+                            some diffusion models (e.g. Levy flights) are 
+                            contingent on the default binning parameters.
+        max_jump        :   float, the max radial displacement to consider in 
+                            um
+        pixel_size_um   :   float, the size of individual pixels in um
+        n_gaps          :   int, the number of gaps allowed during tracking
+        use_entire_track:   bool, use every displacement in the dataset
+        max_jumps_per_track:   int, the maximum number of displacements
+                            to consider per trajectory. Ignored if 
+                            *use_entire_track* is *True*.
+
+    returns
+    -------
+        (
+            2D ndarray of shape (n_frames, n_bins), the distribution of 
+                displacements at each time point;
+            1D ndarray of shape (n_bins+1), the edges of each bin in um
+        )
+
+    """
+    # Sort by trajectory, then frame
+    tracks = tracks.sort_values(by=["trajectory", "frame"])
+
+    # Assign track lengths
+    if "track_length" not in tracks.columns:
+        tracks = track_length(tracks)
+
+    # Filter out unassigned localizations and singlets
+    cols = ["frame", "trajectory"] + list(pos_cols)
+    T = tracks[
+        np.logical_and(tracks["trajectory"]>=0, tracks["track_length"]>1)
+    ][cols]
+
+    # Convert to ndarray for speed
+    convert_cols = ["frame", "trajectory", "trajectory"] + list(pos_cols)
+    T = np.asarray(T[convert_cols]).astype(np.float64)
+
+    # Sort first by track, then by frame
+    T = T[np.lexsort((T[:,0], T[:,1])), :]
+
+    # Convert from pixels to um
+    T[:,3:] = T[:,3:] * pixel_size_um 
+
+    # Format output histogram
+    bin_edges = np.arange(0.0, max_jump+bin_size, bin_size)
+    n_bins = bin_edges.shape[0] - 1
+    H = np.zeros((n_frames, n_bins), dtype=np.int64)
+
+    # Consider gap frames
+    if n_gaps > 0:
+
+        # The maximum trajectory length, including gap frames
+        max_len = (n_gaps + 1) * n_frames + 1
+
+        # Consider every shift up to the maximum trajectory length
+        for l in range(1, max_len+1):
+
+            # Compute the displacement for all possible jumps
+            diff = T[l:,:] - T[:-l,:]
+
+            # Map the trajectory index corresponding to the first point in 
+            # each trajectory
+            diff[:,2] = T[l:,1]
+
+            # Only consider vectors between points originating from the same track
+            diff = diff[diff[:,1] == 0.0, :]
+
+            # Look for jumps corresponding to each frame interval being considered
+            for t in range(1, n_frames+1):
+
+                # Find vectors that match the delay being considered
+                subdiff = diff[diff[:,0] == t, :]
+
+                # Only consider a finite number of displacements from each trajectory
+                if not use_entire_track:
+                    _df = pd.DataFrame(subdiff[:,2], columns=["traj"])
+                    _df["ones"] = 1
+                    _df["index_in_track"] = _df.groupby("traj")["ones"].cumsum() 
+                    subdiff = subdiff[np.asarray(_df["index_in_track"]) <= max_jumps_per_track, :]
+
+                # Calculate radial displacements
+                r_disps = np.sqrt((subdiff[:,3:]**2).sum(axis=1))
+                H[t-1,:] = H[t-1,:] + np.histogram(r_disps, bins=bin_edges)[0]
+
+    # No gap frames
+    else:
+
+        # For each frame interval and each track, calculate the vector change in position
+        for t in range(1, n_frames+1):
+            diff = T[t:,:] - T[:-t,:]
+
+            # Map trajectory indices back to the first localization of each trajectory
+            diff[:,2] = T[t:,1]
+
+            # Only consider vectors between points originating in the same track
+            diff = diff[diff[:,1] == 0.0, :]
+
+            # Only consider vectors that match the delay being considered
+            diff = diff[diff[:,0] == t, :]
+
+            # Only consider a finite number of displacements from each trajectory
+            if not use_entire_track:
+                _df = pd.DataFrame(diff[:,2], columns=["traj"])
+                _df["ones"] = 1
+                _df["index_in_track"] = _df.groupby("traj")["ones"].cumsum()
+                diff = diff[np.asarray(_df["index_in_track"]) <= max_jumps_per_track, :]
+
+            # Calculate radial displacements
+            r_disps = np.sqrt((diff[:,3:]**2).sum(axis=1))
+            H[t-1,:] = np.histogram(r_disps, bins=bin_edges)[0]
+
+    return H, bin_edges
+
+def coarsen_histogram(jump_length_histo, bin_edges, factor):
+    """
+    Given a jump length histogram with many small bins, aggregate into a 
+    histogram with a small number of larger bins.
+
+    args
+    ----
+        jump_length_histo       :   2D ndarray, the jump length histograms
+                                    indexed by (frame interval, jump length bin)
+        bin_edges               :   1D ndarray, the edges of each jump length
+                                    bin in *jump_length_histo*
+        factor                  :   int, the number of bins in the old histogram
+                                    to aggregate for each bin of the new histogram
+
+    returns
+    -------
+        (
+            2D ndarray, the aggregated histogram,
+            1D ndarray, the edges of each jump length bin the aggregated histogram
+        )
+
+    """
+    # Get the new set of bin edges
+    n_frames, n_bins_orig = jump_length_histo.shape 
+    bin_edges_new = bin_edges[::factor]
+    n_bins_new = bin_edges_new.shape[0] - 1
+
+    # May need to truncate the histogram at the very end, if *factor* doesn't
+    # go cleanly into the number of bins in the original histogram
+    H_old = jump_length_histo[:, (bin_edges<bin_edges_new[-1])[:-1]]
+
+    # Aggregate the histogram
+    H = np.zeros((n_frames, n_bins_new), dtype=jump_length_histo.dtype)
+    for j in range(factor):
+        H = H + H_old[:, j::factor]
+
+    return H, bin_edges_new 
