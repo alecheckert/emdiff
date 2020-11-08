@@ -73,12 +73,13 @@ error in an SPT experiment. `emdiff` provides one:
     )
 ```
 
-The localization error represents the root 1D localization variance,
+This localization error represents the root 1D variance associated 
+with estimating a particle's position at any given frame,
 estimated using the covariance between subsequent displacements in 
 a set of trajectories. It gets more accurate as you use more 
 trajectories.
 
 If this localization error seems large, then that's probably 
-because it actually is. Moving molecules produce a lot of error.
-
-
+because it actually is. Moving molecules produce a lot of error
+than the bound molecules that people usually measure localization
+error with.

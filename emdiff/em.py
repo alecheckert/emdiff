@@ -88,6 +88,10 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
     # Previous iteration's estimate, to check for convergence
     prev_occs = occs.copy()
 
+    # Defocalization correction
+    correct_defoc = (not dz is None) and (not dz is np.inf)
+    corr = np.ones(n_states, dtype=np.float64)
+
     # Iterate until convergence or *max_iter* is reached
     for iter_idx in range(max_iter):
 
@@ -110,9 +114,18 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
         diff_coefs = ((T @ sum_r2) / (T @ n_jumps)) / \
             (2 * len(pos_cols) * frame_interval)
         diff_coefs -= d_err
+        diff_coefs = np.maximum(diff_coefs, 1.0e-8 * np.ones(n_states))
 
         # Calculate the new state occupation vector
         occs = (T * n_jumps).sum(axis=1)
+
+        # Correct for defocalization
+        if correct_defoc:
+            for i, D in enumerate(diff_coefs):
+                corr[i] = f_remain(D, 1, frame_interval, dz)[0]
+            occs = occs / corr
+
+        # Normalize
         occs /= occs.sum()
 
         # Check for convergence
@@ -120,13 +133,5 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
             break
         else:
             prev_occs[:] = occs[:]
-
-    # Correct for defocalization
-    if (not dz is None) and (not dz is np.inf):
-        corr = np.zeros(n_states)
-        for i, D in enumerate(diff_coefs):
-            corr[i] = f_remain(D, 1, frame_interval, dz)[0]
-        occs /= corr
-        occs /= occs.sum()
 
     return occs, diff_coefs

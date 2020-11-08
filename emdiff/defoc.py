@@ -4,7 +4,7 @@ defoc.py
 """
 import numpy as np
 
-def f_remain(D, n_frames, frame_interval, dz):
+def f_remain(D, n_frames, frame_interval, dz, mode="inside"):
     """
     Calculate the fraction of Brownian particles that 
     remain in a microscope's depth of field after a
@@ -41,24 +41,35 @@ def f_remain(D, n_frames, frame_interval, dz):
     if (dz is np.inf) or (dz is None):
         return np.ones(n_frames, dtype=np.float64)
 
-    # Define the initial probability mass 
+    # Support for the calculations
     s = (int(dz//2.0)+1) * 2
     support = np.linspace(-s, s, int(((2*s)//0.001)+2))[:-1]
     hz = 0.5 * dz 
     inside = np.abs(support) <= hz 
     outside = ~inside 
-    pmf = inside.astype("float64")
-    pmf /= pmf.sum()
 
     # Define the transfer function for this BM
     g = np.exp(-(support ** 2)/ (4 * D * frame_interval))
     g /= g.sum()
-    g_rft = np.fft.rfft(g)
+    g_rft = np.fft.rfft(g)   
+
+    # Set up the initial probability density
+    if mode == "inside":
+        pmf = inside.astype(np.float64)
+        pmf /= pmf.sum()
+    elif mode == "outside":
+        pmf = outside.astype(np.float64)
+        pmf /= pmf.sum()
+        pmf = np.fft.fftshift(np.fft.irfft(
+            np.fft.rfft(pmf) * g_rft, n=pmf.shape[0]))
+        pmf[outside] = 0.0
+        pmf /= pmf.sum()
 
     # Propagate over subsequent frame intervals
     result = np.zeros(n_frames, dtype=np.float64)
     for t in range(n_frames):
-        pmf = np.fft.fftshift(np.fft.irfft(np.fft.rfft(pmf) * g_rft, n=pmf.shape[0]))
+        pmf = np.fft.fftshift(np.fft.irfft(
+            np.fft.rfft(pmf) * g_rft, n=pmf.shape[0]))
         pmf[outside] = 0.0
         result[t] = pmf.sum()
 
