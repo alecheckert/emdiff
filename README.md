@@ -31,7 +31,7 @@ some simple histograms provided by the `plot` option.
 know the frame interval, approximate localization error, and pixel size.
 
 `emdiff` only launches the estimator from a single initial parameter
-guess, and does not identify when the estimator has converged to a 
+guess. It does not identify when the estimator has converged to a 
 local rather than global maximum. The user can set the initial guess
 via the `guess` argument.
 
