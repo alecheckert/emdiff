@@ -51,7 +51,7 @@ the plots will have scalebars. So that's recommended too.
 3. From a `conda` environment with the dependencies above, run `python setup.py develop`. 
 
 `emdiff` is likely to change in the future. The `develop` option 
-will track changes in the source files as new version become available.
+will track changes in the source files as new versions become available.
 
 ## Expected input
 
@@ -62,6 +62,8 @@ experiment. The dataframe must contain at minimum:
  - a `trajectory` column, with the index of the trajectory to which that localization corresponds;
  - a `frame` column, with the index of the corresponding frame;
  - columns such as `y` and `x` with the spatial coordinates of the localization **in pixels**
+
+See `samples/sample_tracks.csv` for an example.
 
 ## Example usage
 ```
@@ -74,6 +76,8 @@ experiment. The dataframe must contain at minimum:
         loc_error=0.035          # um
     )
 ```
+
+Also see `samples/sample_script.py`. 
 
 ## Example usage with plots
 ```
