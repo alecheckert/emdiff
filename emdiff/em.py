@@ -16,13 +16,14 @@ INIT_DIFF_COEFS = {
     1: np.array([1.0]),
     2: np.array([0.01, 2.0]),
     3: np.array([0.01, 0.5, 5.0]),
-    4: np.array([0.01, 0.5, 1.0, 5.0])
+    4: np.array([0.01, 0.5, 1.0, 5.0]),
+    5: np.array([0.01, 0.2, 1.0, 3.0, 10.0])
 }
 
 def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
     pos_cols=["y", "x"], loc_error=0.035, max_jumps_per_track=None,
     start_frame=0, max_iter=1000, convergence=1.0e-8, dz=np.inf,
-    plot=False, plot_prefix="emdiff_default_out"):
+    plot=False, plot_prefix="emdiff_default_out", guess=None):
     """
     Estimate the occupations and diffusion coefficients for a Brownian
     mixture model using an expectation-maximization routine.
@@ -47,6 +48,8 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
         dz              :   float, focal depth in um
         plot            :   bool, make plots of the result
         plot_prefix     :   str, prefix for output plots
+        guess           :   1D ndarray of shape (n_states,), the initial
+                            diffusion coefficient guess
 
     returns
     -------
@@ -64,7 +67,7 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
     """
     # Check for incompatible inputs
     check_input(tracks, start_frame=start_frame, pos_cols=pos_cols,
-        max_jumps_per_track=max_jumps_per_track)
+        max_jumps_per_track=max_jumps_per_track, guess=guess)
 
     # Localization variance
     le2 = loc_error ** 2
@@ -102,7 +105,13 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
     occs = np.ones(n_states, dtype=np.float64) / n_states
 
     # Initial diffusion coefficients
-    diff_coefs = copy(INIT_DIFF_COEFS[n_states])
+    if guess is None:
+        if n_states <= max(INIT_DIFF_COEFS.keys()):
+            diff_coefs = copy(INIT_DIFF_COEFS[n_states])
+        else:
+            diff_coefs = np.random.uniform(0, 10, size=n_states)
+    else:
+        diff_coefs = np.asarray(guess)
 
     # Likelihoods of each state, given each trajectory
     T = np.zeros((n_states, n_tracks), dtype=np.float64)
@@ -213,9 +222,11 @@ def check_input(tracks, **kwargs):
         None. Raises no errors if correct input.
 
     """
+    n_states = kwargs.get("n_states", 2)
     pos_cols = kwargs.get("pos_cols", ["y", "x"])
     max_jumps_per_track = kwargs.get("max_jumps_per_track", None)
     start_frame = kwargs.get("start_frame", 0)
+    guess = kwargs.get("guess", None)
 
     # Check that required columns exist
     for c in (["trajectory", "frame"] + pos_cols):
@@ -232,4 +243,7 @@ def check_input(tracks, **kwargs):
         assert max_jumps_per_track > 0, "emdiff.em.check_input: " \
             "max_jumps_per_track must be positive (given: {})".format(max_jumps_per_track)
 
-
+    # If the user provides an initial guess for the diffusion
+    # coefficients, make sure it matches with the number of states
+    if not guess is None:
+        assert len(guess) == n_states
