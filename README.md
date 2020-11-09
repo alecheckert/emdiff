@@ -35,6 +35,24 @@ it uses the same localization error along each dimension. This is
 generally not true for SPT experiments in 3D with increased axial 
 localization error.
 
+## Dependencies
+
+`numpy`, `pandas`, `scipy`, `matplotlib`, `seaborn`. These are all
+part of the standard [Anaconda](https://www.anaconda.com/products/individual) distribution. If you have 
+[`matplotlib_scalebar`](https://pypi.org/project/matplotlib-scalebar/), 
+the plots will have scalebars. So that's recommended too.
+
+## Install
+
+1. Clone the repository: `git clone https://github.com/alecheckert/emdiff.git`. 
+
+2. Navigate to the top-level `emdiff` directory.
+
+3. From a `conda` environment with the dependencies above, run `python setup.py develop`. 
+
+`emdiff` is likely to change in the future. The `develop` option 
+will track changes in the source files as new version become available.
+
 ## Expected input
 
 `emdiff` takes trajectories as a `pandas.DataFrame`. Each row of 
