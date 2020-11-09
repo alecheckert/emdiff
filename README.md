@@ -80,6 +80,8 @@ the plots will have scalebars. So that's recommended too.
 
 `emdiff` is likely to change in the future. The `develop` option 
 will track changes in the source files as new versions become available.
+To pull new versions, navigate to the `emdiff` repository and use
+`git pull`. 
 
 ## Expected input
 
@@ -89,9 +91,9 @@ experiment. The dataframe must contain at minimum:
 
  - a `trajectory` column, with the index of the trajectory to which that localization corresponds;
  - a `frame` column, with the index of the corresponding frame;
- - columns such as `y` and `x` with the spatial coordinates of the localization **in pixels**
+ - columns such as `y` and `x` with the spatial coordinates of the localization. **These must be specified in pixels.**
 
-See `samples/sample_tracks.csv` for an example.
+See `samples/sample_tracks.csv` for a sample input.
 
 ## Example usage
 ```
@@ -107,7 +109,7 @@ See `samples/sample_tracks.csv` for an example.
     )
 ```
 
-Also see `samples/sample_script.py`. 
+You can find another example at `samples/sample_script.py`.
 
 ## Example usage with plots
 ```
@@ -156,6 +158,11 @@ If this localization error seems large, then that's probably
 because it actually is. Moving molecules produce a lot of error
 than the bound molecules that people usually measure localization
 error with.
+
+## Does `emdiff` have a defocalization correction similar to [Spot-On](https://gitlab.com/tjian-darzacq-lab/Spot-On)?
+
+Yes. Use the `dz` argument to `emdiff` to set the microscope's focal
+depth in microns.
 
 ## Where can I find a description of the parameters to `emdiff`?
 
