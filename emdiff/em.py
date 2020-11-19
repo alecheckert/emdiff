@@ -23,7 +23,8 @@ INIT_DIFF_COEFS = {
 def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
     pos_cols=["y", "x"], loc_error=0.035, max_jumps_per_track=None,
     start_frame=0, max_iter=1000, convergence=1.0e-8, dz=np.inf,
-    plot=False, plot_prefix="emdiff_default_out", guess=None):
+    plot=False, plot_prefix="emdiff_default_out", guess=None,
+    empirical_corr_factor=1.0):
     """
     Estimate the occupations and diffusion coefficients for a Brownian
     mixture model using an expectation-maximization routine.
@@ -50,6 +51,12 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
         plot_prefix     :   str, prefix for output plots
         guess           :   1D ndarray of shape (n_states,), the initial
                             diffusion coefficient guess
+        empirical_corr_factor   :   float, fraction by which to inflate
+                                    the diffusion coefficients for defocalization
+                                    corrections. This is intended to compensate
+                                    for nonuniformities in the starting axial 
+                                    profile of molecules due to entry of molecules
+                                    from the outside into the focal volume.
 
     returns
     -------
@@ -90,7 +97,9 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
     )
 
     # Make sure we actually have jumps to work with
-    assert not L.empty, "emdiff.em: no jumps found in dataset"
+    if L.empty:
+        return np.full(n_states, np.nan), np.full(n_states, np.nan), \
+            pd.DataFrame(columns=list(L.columns)+["likelihood_state_%d" % c for c in range(n_states)])
 
     # Sum of squared radial displacements
     sum_r2 = np.asarray(L["sum_r2"])
@@ -159,7 +168,7 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
         # Correct for defocalization
         if correct_defoc:
             for i, D in enumerate(diff_coefs):
-                corr[i] = f_remain(D, 1, frame_interval, dz)[0]
+                corr[i] = f_remain(D*empirical_corr_factor, 1, frame_interval, dz)[0]
             occs = occs / corr
 
         # Normalize
