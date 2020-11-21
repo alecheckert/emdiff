@@ -38,7 +38,7 @@ def f_remain(D, n_frames, frame_interval, dz, mode="inside"):
             to remain at each frame interval
 
     """
-    if (dz is np.inf) or (dz is None):
+    if (dz is np.inf) or (dz is None) or (D <= 0.0):
         return np.ones(n_frames, dtype=np.float64)
 
     # Support for the calculations

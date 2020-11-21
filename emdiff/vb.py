@@ -111,8 +111,7 @@ def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
     # For internal convenience
     le2 = loc_error ** 2
     K = n_states 
-    correct_defoc = (not dz is None) and (not dz is np.inf)
-    corr = np.zeros(n_states, dtype=np.float64) # for defocalization correction
+    consider_defoc = (not dz is None) and (not dz is np.inf)
 
     # Only take points after the start frame
     if start_frame > 0:
@@ -140,6 +139,28 @@ def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
     # Total number of trajectories
     N = L['trajectory'].nunique()
 
+    # Function to correct state occupations for defocalization bias
+    def corr_defoc(A, B, n):
+        """
+        args
+        ----
+            A       :   posterior alpha parameters for each state
+            B       :   posterior beta parameters for each state
+            n       :   counts to correct
+
+        returns
+        -------
+            version of *n*, corrected
+
+        """
+        phi = B / (A - 1)
+        corr = np.zeros(K)
+        diff_coefs = np.maximum(0, (phi / 4 - le2) / frame_interval)
+        for j in range(K):
+            corr[j] = f_remain(diff_coefs[j], 1, frame_interval, dz)[0]
+        corr = 1.0 / corr 
+        corr /= corr.max()
+        return n * corr 
 
     ## PRIOR DEFINITION
 
@@ -196,9 +217,15 @@ def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
     # phi values (via the inverse gamma parameters *A* and *B*)
     nr = (r * n_jumps).sum(axis=1)
     sr = (r * sum_r2).sum(axis=1)
+
+    # Initial posterior estimates
     n = n0 + nr
     A = A0 + nr 
     B = B0 + sr 
+
+    # Correct for defocalization
+    if consider_defoc:
+        n = corr_defoc(A, B, n)
 
 
     ## CORE REFINEMENT
@@ -236,6 +263,10 @@ def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
 
         # Posterior over state occupations (parameter for a Dirichlet distribution)
         n = n0 + nr 
+
+        # Correct for defocalization, if desired
+        if consider_defoc:
+            n = corr_defoc(A, B, n)
 
         # Posterior over phi (alpha and beta parameters for an inverse gamma distribution)
         A = A0 + nr 

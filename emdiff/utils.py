@@ -4,7 +4,7 @@ utils.py
 """
 import numpy as np
 import pandas as pd
-from scipy.special import gamma, gammainc
+from scipy.special import gamma, gammainc, loggamma
 from .defoc import f_remain 
 
 def logbeta(*args):
