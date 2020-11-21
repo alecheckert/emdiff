@@ -8,7 +8,7 @@ import os
 from copy import copy
 import numpy as np 
 import pandas as pd 
-from scipy.special import digamma, gamma, loggamma
+from scipy.special import digamma, loggamma
 
 from .defoc import f_remain 
 from .utils import (
@@ -104,7 +104,10 @@ def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
 
             elbo, float; the evidence lower bound (higher indicates that
                 the model (i.e. the number of states) describes the data
-                better)
+                better);
+
+            model_likelihood, float; the likelihood of the posterior
+                model given the data
         )
 
     """
@@ -274,7 +277,7 @@ def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
 
     # Evaluate the variational lower bound for the model evidence
     # under the posterior distribution
-    elbo = calc_elbo(sum_r2, n_jumps, r, n, A, B, n0, A0,
+    elbo, model_likelihood = calc_elbo(sum_r2, n_jumps, r, n, A, B, n0, A0,
         B0, exp_log_occs, exp_inv_phi, exp_log_phi)   
 
     # Mean occupation for each state under the posterior distribution
@@ -286,7 +289,7 @@ def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
 
     # Return the parameters for the mean field approximation to the posterior
     # distribution
-    return r, n, A, B, occs, D_mean, elbo
+    return r, n, A, B, occs, D_mean, elbo, model_likelihood
 
 def calc_elbo(sum_r2, n_jumps, r, n, A, B, n0, A0, B0,
     exp_log_occs, exp_inv_phi, exp_log_phi,
@@ -307,7 +310,10 @@ def calc_elbo(sum_r2, n_jumps, r, n, A, B, n0, A0, B0,
 
     returns
     -------
-        float
+        (
+            float, evidence lower bound;
+            float, model likelihood
+        )
 
     """
     K, N = r.shape
@@ -320,11 +326,10 @@ def calc_elbo(sum_r2, n_jumps, r, n, A, B, n0, A0, B0,
     evA = ((r * n_jumps) * _evA).sum()
 
     # Due to the prior over state assignments (decreases with higher K; large magnitude)
-    # evB = (exp_log_occs * r.sum(axis=1)).sum()
     evB = (exp_log_occs * (r * n_jumps).sum(axis=1)).sum()
 
     # Due to the prior over mixing coefficients (decreases with higher K; low magnitude)
-    evC = ((n0 - 1) * exp_log_occs).sum() - logbeta(*n0)
+    evC = (n0[0] - 1) * exp_log_occs.sum() - logbeta(*n0)
 
     # Due to the prior over phi (increases with higher K; low magnitude)
     evD = (A0 * np.log(B0) - loggamma(A0) - B0 * A / B - (A0 + 1) * exp_log_phi).sum()
@@ -357,5 +362,5 @@ def calc_elbo(sum_r2, n_jumps, r, n, A, B, n0, A0, B0,
     if identifiability_corr:
         elbo += loggamma(K+1)
 
-    return elbo 
+    return elbo, evA  
 
