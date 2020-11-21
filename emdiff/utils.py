@@ -7,6 +7,21 @@ import pandas as pd
 from scipy.special import gamma, gammainc
 from .defoc import f_remain 
 
+def logbeta(*args):
+    """
+    Log multivariate beta function.
+
+    args
+    ----
+        *args   :   arguments
+
+    returns
+    -------
+        float
+
+    """
+    return loggamma(args).sum() - loggamma(sum(args))
+
 def drop_col(df, col):
     """
     If a pandas.DataFrame has a particular column, drop it.
