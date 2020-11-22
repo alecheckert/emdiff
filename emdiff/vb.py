@@ -5,6 +5,7 @@ vb.py -- variational Bayes version of the EM algorithm
 """
 import sys
 import os
+from time import sleep
 from copy import copy
 import numpy as np 
 import pandas as pd 
@@ -26,7 +27,7 @@ INIT_DIFF_COEFS = {
 
 def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
     pos_cols=['y', 'x'], loc_error=0.035, max_jumps_per_track=None,
-    start_frame=0, max_iter=1000, convergence=1.0e-8, dz=np.inf,
+    start_frame=0, max_iter=1000, convergence=1.0e-10, dz=np.inf,
     guess=None, pseudocounts=2.0):
     """
     Evaluate a variational Bayesian approximation to the posterior
@@ -233,6 +234,7 @@ def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
 
     ## CORE REFINEMENT
 
+    prev_n = n.copy()
     for iter_idx in range(max_iter):
 
         # Expectation of log(occs[j]) under the
@@ -275,10 +277,20 @@ def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
         A = A0 + nr 
         B = B0 + sr
 
+        # Call convergence
+        delta = np.abs(n - prev_n)
+        if (delta < convergence).all():
+            break
+        else:
+            prev_n = n
+
     # Evaluate the variational lower bound for the model evidence
     # under the posterior distribution
+    exp_log_occs = digamma(n) - digamma(n.sum())
+    exp_log_phi = np.log(B) - digamma(A)
+    exp_inv_phi = A / B 
     elbo, model_likelihood = calc_elbo(sum_r2, n_jumps, r, n, A, B, n0, A0,
-        B0, exp_log_occs, exp_inv_phi, exp_log_phi)   
+        B0, exp_log_occs, exp_inv_phi, exp_log_phi)
 
     # Mean occupation for each state under the posterior distribution
     occs = n / n.sum()
