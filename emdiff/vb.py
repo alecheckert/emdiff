@@ -166,6 +166,7 @@ def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
         corr /= corr.max()
         return n * corr 
 
+
     ## PRIOR DEFINITION
 
     # Treat the initial guess at the diffusion coefficients as 
@@ -175,7 +176,7 @@ def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
         if n_states <= max(INIT_DIFF_COEFS.keys()):
             diff_coefs = copy(INIT_DIFF_COEFS[n_states])
         else:
-            diff_coefs = np.random.uniform(0, 10, size=n_states)
+            diff_coefs = np.logspace(-2, 2, n_states)
     else:
         diff_coefs = np.asarray(guess)
 
@@ -298,6 +299,15 @@ def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
     # Mean diffusion coefficients under the posterior distribution
     phi_mean = B / (A - 1)
     D_mean = (phi_mean / 4.0 - le2) / frame_interval 
+
+    # Arrange the states by increasing diffusion coefficient
+    order = np.argsort(D_mean)
+    occs = occs[order]
+    D_mean = D_mean[order]
+    A = A[order]
+    B = B[order]
+    n = n[order]
+    r = r[order, :]
 
     # Return the parameters for the mean field approximation to the posterior
     # distribution
