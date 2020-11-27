@@ -28,7 +28,7 @@ INIT_DIFF_COEFS = {
 def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
     pos_cols=['y', 'x'], loc_error=0.035, max_jumps_per_track=None,
     start_frame=0, max_iter=1000, convergence=1.0e-10, dz=np.inf,
-    guess=None, pseudocounts=2.0):
+    guess=None, pseudocounts=2.0, return_posterior=False):
     """
     Evaluate a variational Bayesian approximation to the posterior
     distribution of a finite-state regular Brownian mixtures, given
@@ -80,36 +80,51 @@ def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
                                 variances. Higher means the algorithm requires more
                                 data but is more conservative.
                                 ~~Do not set below 2.0.~~
+        return_posterior    :   bool. In addition to returning the mean diffusion
+                                coefficients and state occupancies, also return 
+                                the parameters for the full posterior distribution
+                                over occupancies, diffusion coefficients, and 
+                                assignments of each trajectory to a state
 
     returns
     -------
-        (
-            r, 2D ndarray of shape (n_states, n_tracks); where 
-                r[j,i] is the mean probability for trajectory i to 
-                inhabit state j under the posterior model;
+        if *return_posterior*:
+            (
+                r, 2D ndarray of shape (n_states, n_tracks); where 
+                    r[j,i] is the mean probability for trajectory i to 
+                    inhabit state j under the posterior model;
 
-            n, 1D ndarray of shape (n_states); the Dirichlet parameter
-                over the mixing coefficients under the posterior model;
+                n, 1D ndarray of shape (n_states); the Dirichlet parameter
+                    over the mixing coefficients under the posterior model;
 
-            A, 1D ndarray of shape (n_states); the alpha parameter over
-                the spatial variances (phi) under the posterior model;
+                A, 1D ndarray of shape (n_states); the alpha parameter over
+                    the spatial variances (phi) under the posterior model;
 
-            B, 1D ndarray of shape (n_states); the beta parameter over
-                the spatial variances (phi) under the posterior model;
+                B, 1D ndarray of shape (n_states); the beta parameter over
+                    the spatial variances (phi) under the posterior model;
 
-            occs, 1D ndarray of shape (n_states); the mean state 
-                occupations under the posterior model;
+                occs, 1D ndarray of shape (n_states); the mean state 
+                    occupations under the posterior model;
 
-            D_mean, 1D ndarray of shape (n_states); the mean diffusion
-                coefficients under the posterior model;
+                D_mean, 1D ndarray of shape (n_states); the mean diffusion
+                    coefficients under the posterior model;
 
-            elbo, float; the evidence lower bound (higher indicates that
-                the model (i.e. the number of states) describes the data
-                better);
+                elbo, float; the evidence lower bound (higher indicates that
+                    the model (i.e. the number of states) describes the data
+                    better);
 
-            model_likelihood, float; the likelihood of the posterior
-                model given the data
-        )
+                model_likelihood, float; the likelihood of the posterior
+                    model given the data
+            )
+
+        otherwise:
+            (
+                occs, 1D ndarray of shape (n_states); the mean state 
+                    occupations under the posterior model;
+
+                D_mean, 1D ndarray of shape (n_states); the mean diffusion
+                    coefficients under the posterior model
+            )
 
     """
     # For internal convenience
@@ -311,7 +326,10 @@ def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
 
     # Return the parameters for the mean field approximation to the posterior
     # distribution
-    return r, n, A, B, occs, D_mean, elbo, model_likelihood
+    if return_posterior:
+        return r, n, A, B, occs, D_mean, elbo, model_likelihood
+    else:
+        return occs, D_mean 
 
 def calc_elbo(sum_r2, n_jumps, r, n, A, B, n0, A0, B0,
     exp_log_occs, exp_inv_phi, exp_log_phi,
