@@ -36,6 +36,10 @@ trajectories before a start frame, but that's it.
 `emdiff` does not decide how many diffusive states are present
 in your data. You decide that.
 
+`emdiff` and `vbdiff` do not consider transitions between states. For that,
+we highly recommend [vbSPT](http://vbspt.sourceforge.net/ref/persson-nmeth-2013.pdf)
+from the Elf group.
+
 `emdiff` and `vbdiff` do not provide any visualizations of the result beyond
 some simple histograms provided by the `plot` option to `emdiff`.
 
