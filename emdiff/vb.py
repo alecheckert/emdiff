@@ -27,7 +27,7 @@ INIT_DIFF_COEFS = {
 
 def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
     pos_cols=['y', 'x'], loc_error=0.035, max_jumps_per_track=None,
-    start_frame=0, max_iter=1000, convergence=1.0e-10, dz=np.inf,
+    start_frame=0, max_iter=10000, convergence=1.0e-8, dz=np.inf,
     guess=None, pseudocounts=2.0, return_posterior=False):
     """
     Evaluate a variational Bayesian approximation to the posterior
