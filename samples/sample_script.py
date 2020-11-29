@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 """
-sample_script.py -- Example usage of emdiff
+sample_script.py -- Example usage of vbdiff
 
 """
 import pandas as pd
-from emdiff import emdiff
+from emdiff import vbdiff
 
 if __name__ == "__main__":
 
@@ -12,15 +12,13 @@ if __name__ == "__main__":
     tracks = pd.read_csv("sample_tracks.csv")
 
     # Run emdiff
-    occs, diff_coefs, tracks_annot = emdiff(
+    occs, diff_coefs = vbdiff(
         tracks,
-        n_states=3,           # number of diffusive states
+        n_states=8,             # number of diffusive states
         pixel_size_um=0.16,     # microns
         frame_interval=0.00748, # seconds
         loc_error=0.035,        # microns
-        dz=0.7,          # focal depth, microns
-        plot=False,      # uncomment to make plots
-        plot_prefix="sample_plots",
+        dz=0.7,                 # focal depth, microns
     )
 
     # State the result
