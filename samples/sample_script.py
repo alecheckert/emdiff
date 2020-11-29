@@ -14,7 +14,7 @@ if __name__ == "__main__":
     # Run emdiff
     occs, diff_coefs = vbdiff(
         tracks,
-        n_states=8,             # number of diffusive states
+        n_states=5,             # number of diffusive states
         pixel_size_um=0.16,     # microns
         frame_interval=0.00748, # seconds
         loc_error=0.035,        # microns
