@@ -24,7 +24,7 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
     pos_cols=["y", "x"], loc_error=0.035, max_jumps_per_track=None,
     start_frame=0, max_iter=1000, convergence=1.0e-8, dz=np.inf,
     plot=False, plot_prefix="emdiff_default_out", guess=None,
-    empirical_corr_factor=1.0):
+    empirical_corr_factor=1.0, allow_neg_diff_coef=False):
     """
     Estimate the occupations and diffusion coefficients for a Brownian
     mixture model using an expectation-maximization routine.
@@ -57,6 +57,10 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
                                     for nonuniformities in the starting axial 
                                     profile of molecules due to entry of molecules
                                     from the outside into the focal volume.
+        allow_neg_diff_coef :   bool, set negative diffusion coefficients to zero.
+                                This occurs when the particles in a state are 
+                                moving slower than predicted for localization error
+                                alone.
 
     returns
     -------
@@ -215,6 +219,9 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
         attrib_cols = ["likelihood_state_%d" % j for j in range(n_states)]
         spatial_dist(tracks, attrib_cols, spatial_dist_png, pixel_size_um=pixel_size_um,
             bin_size=0.01, kde_width=0.1, cmap="magma", cmap_perc=99.5)
+
+    if not allow_neg_diff_coef:
+        diff_coefs[diff_coefs<0] = 0
 
     return occs, diff_coefs, tracks 
 

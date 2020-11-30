@@ -28,7 +28,8 @@ INIT_DIFF_COEFS = {
 def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
     pos_cols=['y', 'x'], loc_error=0.035, max_jumps_per_track=None,
     start_frame=0, max_iter=10000, convergence=1.0e-8, dz=np.inf,
-    guess=None, pseudocounts=2.0, return_posterior=False):
+    guess=None, pseudocounts=2.0, return_posterior=False,
+    allow_neg_diff_coef=False):
     """
     Evaluate a variational Bayesian approximation to the posterior
     distribution of a finite-state regular Brownian mixtures, given
@@ -85,6 +86,10 @@ def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
                                 the parameters for the full posterior distribution
                                 over occupancies, diffusion coefficients, and 
                                 assignments of each trajectory to a state
+        allow_neg_diff_coef :   bool, allow the diffusion coefficient to assume
+                                negative values if the observed motion is 
+                                actually slower than the user-provided localization
+                                error
 
     returns
     -------
@@ -323,6 +328,11 @@ def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
     B = B[order]
     n = n[order]
     r = r[order, :]
+
+    # Set negative values for the diffusion coefficient to zero,
+    # if desired
+    if not allow_neg_diff_coef:
+        diff_coefs[diff_coefs < 0] = 0
 
     # Return the parameters for the mean field approximation to the posterior
     # distribution
