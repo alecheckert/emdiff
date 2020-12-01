@@ -332,7 +332,7 @@ def vbdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.01,
     # Set negative values for the diffusion coefficient to zero,
     # if desired
     if not allow_neg_diff_coef:
-        diff_coefs[diff_coefs < 0] = 0
+        D_mean[D_mean < 0] = 0
 
     # Return the parameters for the mean field approximation to the posterior
     # distribution
