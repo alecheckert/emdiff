@@ -78,7 +78,7 @@ def assign_index_in_track(tracks):
     """
     tracks = drop_col(tracks, "index_in_track")
     tracks["one"] = 1
-    tracks["index_in_track"] = tracks.grouby("trajectory")["one"].cumsum()
+    tracks["index_in_track"] = tracks.groupby("trajectory")["one"].cumsum()
     tracks = drop_col(tracks, "one")
     return tracks
 
