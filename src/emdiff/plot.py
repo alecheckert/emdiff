@@ -303,7 +303,7 @@ def plot_jump_length_pmf(
             linestyle="",
             marker=None,
             color="w",
-            label="$\Delta t = ${:.4f} sec".format((t + 1) * frame_interval),
+            label="∆t = {:.4f} sec".format((t + 1) * frame_interval),
         )
 
         axes[t].legend(frameon=False, prop={"size": 6}, loc="upper right")
@@ -316,7 +316,7 @@ def plot_jump_length_pmf(
     # Only show jumps up to the max jump length
     if not max_jump is None:
         axes[0].set_xlim((0, max_jump))
-    axes[-1].set_xlabel("2D radial displacement ($\mu$m)", fontsize=10)
+    axes[-1].set_xlabel("2D radial displacement (µm)", fontsize=10)
 
     # Save to a file, if desired
     if not out_png is None:
@@ -451,7 +451,7 @@ def plot_jump_length_cdf(
                 label="{:.4f} sec".format((t + 1) * frame_interval),
                 linewidth=1,
             )
-        ax[1].set_xlabel("Jump length ($\mu$m)", fontsize=fontsize)
+        ax[1].set_xlabel("Jump length (µm)", fontsize=fontsize)
         ax[1].set_ylabel("Residuals", fontsize=fontsize)
 
         # Center the residuals on zero
