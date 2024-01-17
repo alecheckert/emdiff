@@ -8,7 +8,11 @@ from emdiff import vbdiff
 
 if __name__ == "__main__":
 
-    # Load some tracks
+    # Load some tracks. This must contain the columns:
+    #   "trajectory": trajectory index of each spot
+    #   "frame": frame index of each spot
+    #   "x": x-coordinate of each spot in pixels
+    #   "y": y-coordinate of each spot in pixels
     tracks = pd.read_csv("sample_tracks.csv")
 
     # Run emdiff

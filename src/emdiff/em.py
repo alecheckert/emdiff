@@ -7,9 +7,7 @@ from copy import copy
 import numpy as np
 import pandas as pd
 from .defoc import f_remain
-from .utils import (
-    sum_squared_jumps
-)
+from .utils import sum_squared_jumps
 from .plot import plot_jump_length_dist, spatial_dist
 
 INIT_DIFF_COEFS = {
@@ -17,14 +15,28 @@ INIT_DIFF_COEFS = {
     2: np.array([0.01, 2.0]),
     3: np.array([0.01, 0.5, 5.0]),
     4: np.array([0.01, 0.5, 1.0, 5.0]),
-    5: np.array([0.01, 0.2, 1.0, 3.0, 10.0])
+    5: np.array([0.01, 0.2, 1.0, 3.0, 10.0]),
 }
 
-def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
-    pos_cols=["y", "x"], loc_error=0.035, max_jumps_per_track=None,
-    start_frame=0, max_iter=1000, convergence=1.0e-8, dz=np.inf,
-    plot=False, plot_prefix="emdiff_default_out", guess=None,
-    empirical_corr_factor=1.0, allow_neg_diff_coef=False):
+
+def emdiff(
+    tracks,
+    n_states=2,
+    pixel_size_um=0.16,
+    frame_interval=0.00748,
+    pos_cols=["y", "x"],
+    loc_error=0.035,
+    max_jumps_per_track=None,
+    start_frame=0,
+    max_iter=1000,
+    convergence=1.0e-8,
+    dz=np.inf,
+    plot=False,
+    plot_prefix="emdiff_default_out",
+    guess=None,
+    empirical_corr_factor=1.0,
+    allow_neg_diff_coef=False,
+):
     """
     Estimate the occupations and diffusion coefficients for a Brownian
     mixture model using an expectation-maximization routine.
@@ -42,7 +54,7 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
                                 from each trajectory
         start_frame     :   int, only include trajectories before this
                             frame
-        max_iter        :   int, the maximum number of iterations to do 
+        max_iter        :   int, the maximum number of iterations to do
                             before stopping
         convergence     :   float, convergence criterion for the occupation
                             estimate
@@ -54,11 +66,11 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
         empirical_corr_factor   :   float, fraction by which to inflate
                                     the diffusion coefficients for defocalization
                                     corrections. This is intended to compensate
-                                    for nonuniformities in the starting axial 
+                                    for nonuniformities in the starting axial
                                     profile of molecules due to entry of molecules
                                     from the outside into the focal volume.
         allow_neg_diff_coef :   bool, set negative diffusion coefficients to zero.
-                                This occurs when the particles in a state are 
+                                This occurs when the particles in a state are
                                 moving slower than predicted for localization error
                                 alone.
 
@@ -66,10 +78,10 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
     -------
         (
             1D ndarray of shape (n_states,), the occupations;
-            1D ndarray of shape (n_states,), the corresponding 
+            1D ndarray of shape (n_states,), the corresponding
                 diffusion coefficients in um^2 s^-1;
             pandas.DataFrame, the original trajectories with extra
-                columns corresponding to the likelihoods of each 
+                columns corresponding to the likelihoods of each
                 final diffusive state, given the corresponding
                 trajectory. Trajectories with only a single point
                 (``singlets'') are assigned NaN in these columns.
@@ -77,11 +89,16 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
 
     """
     # Check for incompatible inputs
-    check_input(tracks, start_frame=start_frame, pos_cols=pos_cols,
-        max_jumps_per_track=max_jumps_per_track, guess=guess)
+    check_input(
+        tracks,
+        start_frame=start_frame,
+        pos_cols=pos_cols,
+        max_jumps_per_track=max_jumps_per_track,
+        guess=guess,
+    )
 
     # Localization variance
-    le2 = loc_error ** 2
+    le2 = loc_error**2
 
     # Apparent diffusion coefficient of a completely immobile
     # object due to localization error
@@ -91,19 +108,25 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
     if start_frame > 0:
         tracks = tracks[tracks["frame"] >= start_frame]
 
-    # Calculate the sum of squared displacements for every 
+    # Calculate the sum of squared displacements for every
     # trajectory in this dataset
     L = sum_squared_jumps(
         tracks,
         pixel_size_um=pixel_size_um,
         pos_cols=pos_cols,
-        max_jumps_per_track=max_jumps_per_track
+        max_jumps_per_track=max_jumps_per_track,
     )
 
     # Make sure we actually have jumps to work with
     if L.empty:
-        return np.full(n_states, np.nan), np.full(n_states, np.nan), \
-            pd.DataFrame(columns=list(L.columns)+["likelihood_state_%d" % c for c in range(n_states)])
+        return (
+            np.full(n_states, np.nan),
+            np.full(n_states, np.nan),
+            pd.DataFrame(
+                columns=list(L.columns)
+                + ["likelihood_state_%d" % c for c in range(n_states)]
+            ),
+        )
 
     # Sum of squared radial displacements
     sum_r2 = np.asarray(L["sum_r2"])
@@ -139,12 +162,11 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
 
     # Iterate until convergence or *max_iter* is reached
     for iter_idx in range(max_iter):
-
         # Determine the log likelihoods of each trajectory under
         # the present model
         for j, d in enumerate(diff_coefs):
             var2 = 4 * (d * frame_interval + le2)
-            T[j,:] = -sum_r2 / var2 - n_jumps * np.log(var2)
+            T[j, :] = -sum_r2 / var2 - n_jumps * np.log(var2)
         T = T - T.max(axis=0)
         T = np.exp(T)
 
@@ -159,8 +181,9 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
         T = T * n_jumps
 
         # Calculate the new vector of diffusion coefficients
-        diff_coefs = ((T @ sum_r2) / (T @ n_jumps)) / \
-            (2 * len(pos_cols) * frame_interval)
+        diff_coefs = ((T @ sum_r2) / (T @ n_jumps)) / (
+            2 * len(pos_cols) * frame_interval
+        )
         diff_coefs -= d_err
 
         # Naive way to guard against negative diffusion coefficients
@@ -172,15 +195,16 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
         # Correct for defocalization
         if correct_defoc:
             for i, D in enumerate(diff_coefs):
-                corr[i] = f_remain(D*empirical_corr_factor, 1, frame_interval, dz)[0]
+                corr[i] = f_remain(D * empirical_corr_factor, 1, frame_interval, dz)[0]
             occs = occs / corr
 
         # Normalize
         occs /= occs.sum()
 
         # Check for convergence
-        if (np.abs(occs - prev_occs) <= convergence).all() and \
-            (np.abs(diff_coefs - prev_diff_coefs) <= convergence).all():
+        if (np.abs(occs - prev_occs) <= convergence).all() and (
+            np.abs(diff_coefs - prev_diff_coefs) <= convergence
+        ).all():
             break
         else:
             prev_occs[:] = occs[:]
@@ -192,38 +216,61 @@ def emdiff(tracks, n_states=2, pixel_size_um=0.16, frame_interval=0.00748,
     diff_coefs = diff_coefs[order]
     T = T[order, :]
 
-    # Map the state likelihoods back to the origin trajectories, if 
+    # Map the state likelihoods back to the origin trajectories, if
     # desired
     T = T / T.sum(axis=0)
     L = L.set_index("trajectory")
     for j in range(n_states):
-        c = "likelihood_state_%d" % j 
-        L[c] = T[j,:]
+        c = "likelihood_state_%d" % j
+        L[c] = T[j, :]
         tracks[c] = tracks["trajectory"].map(L[c])
 
     # Plot the result, if desired
     if plot:
-        use_entire_track = (not max_jumps_per_track is None) and \
-            (not max_jumps_per_track is np.inf)
+        use_entire_track = (not max_jumps_per_track is None) and (
+            not max_jumps_per_track is np.inf
+        )
 
         # Plot jump length histograms
-        plot_jump_length_dist(tracks, occs, diff_coefs, plot_prefix, 
-            pos_cols=pos_cols, n_frames=4, frame_interval=frame_interval,
-            pixel_size_um=pixel_size_um, loc_error=loc_error, dz=dz,
-            max_jump=5.0, max_jump_pmf=2.0, cmap="gray", figsize_mod=1.0,
-            n_gaps=0, use_entire_track=use_entire_track,
-            max_jumps_per_track=max_jumps_per_track)
+        plot_jump_length_dist(
+            tracks,
+            occs,
+            diff_coefs,
+            plot_prefix,
+            pos_cols=pos_cols,
+            n_frames=4,
+            frame_interval=frame_interval,
+            pixel_size_um=pixel_size_um,
+            loc_error=loc_error,
+            dz=dz,
+            max_jump=5.0,
+            max_jump_pmf=2.0,
+            cmap="gray",
+            figsize_mod=1.0,
+            n_gaps=0,
+            use_entire_track=use_entire_track,
+            max_jumps_per_track=max_jumps_per_track,
+        )
 
         # Plot the spatial distribution
         spatial_dist_png = "{}_spatial_dist.png".format(plot_prefix)
         attrib_cols = ["likelihood_state_%d" % j for j in range(n_states)]
-        spatial_dist(tracks, attrib_cols, spatial_dist_png, pixel_size_um=pixel_size_um,
-            bin_size=0.01, kde_width=0.1, cmap="magma", cmap_perc=99.5)
+        spatial_dist(
+            tracks,
+            attrib_cols,
+            spatial_dist_png,
+            pixel_size_um=pixel_size_um,
+            bin_size=0.01,
+            kde_width=0.1,
+            cmap="magma",
+            cmap_perc=99.5,
+        )
 
     if not allow_neg_diff_coef:
-        diff_coefs[diff_coefs<0] = 0
+        diff_coefs[diff_coefs < 0] = 0
 
-    return occs, diff_coefs, tracks 
+    return occs, diff_coefs, tracks
+
 
 def check_input(tracks, **kwargs):
     """
@@ -245,19 +292,26 @@ def check_input(tracks, **kwargs):
     guess = kwargs.get("guess", None)
 
     # Check that required columns exist
-    for c in (["trajectory", "frame"] + pos_cols):
-        assert c in tracks.columns, "emdiff.em.check_input: column {} " \
-            "not present".format(c)
+    for c in ["trajectory", "frame"] + pos_cols:
+        assert (
+            c in tracks.columns
+        ), "emdiff.em.check_input: column {} " "not present".format(c)
 
     # Check that the start frame does not exclude all trajectories
     if start_frame > 0:
-        assert (tracks["frame"] >= start_frame).sum() > 0, "emdiff.em.check_input: " \
+        assert (tracks["frame"] >= start_frame).sum() > 0, (
+            "emdiff.em.check_input: "
             "no localizations after the start frame {}".format(start_frame)
+        )
 
     # Check that maximum jumps per trajectory is sane
     if (not max_jumps_per_track is None) and (not max_jumps_per_track is np.inf):
-        assert max_jumps_per_track > 0, "emdiff.em.check_input: " \
-            "max_jumps_per_track must be positive (given: {})".format(max_jumps_per_track)
+        assert max_jumps_per_track > 0, (
+            "emdiff.em.check_input: "
+            "max_jumps_per_track must be positive (given: {})".format(
+                max_jumps_per_track
+            )
+        )
 
     # If the user provides an initial guess for the diffusion
     # coefficients, make sure it matches with the number of states
