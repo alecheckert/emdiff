@@ -227,7 +227,8 @@ def vbdiff(
     # beta factor for the inverse gamma posterior over phi.
     # Initially, we set this to the beta parameter corresponding
     # to the mean prior value of phi
-    B0 = phi * (A - 1)
+    # B0 = phi * (A - 1)
+    B0 = phi * A
     B = B0.copy()
 
     ## INITIALIZATION
@@ -317,7 +318,7 @@ def vbdiff(
     exp_log_occs = digamma(n) - digamma(n.sum())
     exp_log_phi = np.log(B) - digamma(A)
     exp_inv_phi = A / B
-    elbo, model_likelihood = calc_elbo(
+    elbo, evA, evB, evC, evD, evE, evF, evG = calc_elbo(
         sum_r2, n_jumps, r, n, A, B, n0, A0, B0, exp_log_occs, exp_inv_phi, exp_log_phi
     )
 
@@ -345,7 +346,7 @@ def vbdiff(
     # Return the parameters for the mean field approximation to the posterior
     # distribution
     if return_posterior:
-        return r, n, A, B, occs, D_mean, elbo, model_likelihood
+        return r, n, A, B, occs, D_mean, elbo, evA, evB, evC, evD, evE, evF, evG
     else:
         return occs, D_mean
 
@@ -364,6 +365,7 @@ def calc_elbo(
     exp_inv_phi,
     exp_log_phi,
     identifiability_corr=True,
+    mode: int = 1,
 ):
     """
     Calculate the variational evidence lower bound for
@@ -398,10 +400,16 @@ def calc_elbo(
             - loggamma(n_jumps)
             - exp_log_phi[j] * n_jumps
         )
-    evA = ((r * n_jumps) * _evA).sum()
+    if mode == 0:
+        evA = ((r * n_jumps) * _evA).sum()
+    elif mode == 1:
+        evA = (r * _evA).sum()
 
     # Due to the prior over state assignments (decreases with higher K; large magnitude)
-    evB = (exp_log_occs * (r * n_jumps).sum(axis=1)).sum()
+    if mode == 0:
+        evB = (exp_log_occs * (r * n_jumps).sum(axis=1)).sum()
+    elif mode == 1:
+        evB = (exp_log_occs * r.sum(axis=1)).sum()
 
     # Due to the prior over mixing coefficients (decreases with higher K; low magnitude)
     evC = (n0[0] - 1) * exp_log_occs.sum() - logbeta(*n0)
@@ -410,8 +418,17 @@ def calc_elbo(
     evD = (A0 * np.log(B0) - loggamma(A0) - B0 * A / B - (A0 + 1) * exp_log_phi).sum()
 
     # Due to the posterior over state assignments (decreases with higher K; high magnitude)
-    nonzero = r > 0
-    evE = (r[nonzero] * np.log(r[nonzero])).sum()
+    if mode == 0:
+        r_adj = r + 1e-8
+        evE = ((r_adj * n_jumps) * np.log(r_adj)).sum()
+    elif mode == 1:
+        # nonzero = (r > 0).all(axis=0)
+        # evE = ((r[:, nonzero] * n_jumps[nonzero]) * np.log(r[:,nonzero])).sum()
+        
+        # print(f"(r<=0).sum() = {(r<=0).sum()}")
+        # print(f"(r>0).sum() = {(r>0).sum()}")
+        r_adj = r + 1e-8
+        evE = (r_adj * np.log(r_adj)).sum()
 
     # Due to the posterior over mixing coefficients (increases with higher K; low magnitude)
     evF = ((n - 1) * exp_log_occs).sum() - logbeta(*n)
@@ -424,17 +441,18 @@ def calc_elbo(
 
     # For checking numerical accuracy
     if False:
-        print("evA: ", evA)
-        print("evB: ", evB)
-        print("evC: ", evC)
-        print("evD: ", evD)
-        print("evE: ", evE)
-        print("evF: ", evF)
-        print("evG: ", evG)
+        print(f"K = {K}")
+        print(f"evA:\t{evA:.3f}")
+        print(f"evB:\t{evB:.3f}")
+        print(f"evC:\t{evC:.3f}")
+        print(f"evD:\t{evD:.3f}")
+        print(f"evE:\t{evE:.3f}")
+        print(f"evF:\t{evF:.3f}")
+        print(f"evG:\t{evG:.3f}")
 
     # Apply an identifiability correction (usually small in magnitude
     # compare to the other terms)
     if identifiability_corr:
         elbo += loggamma(K + 1)
 
-    return elbo, evA
+    return elbo, evA, evB, evC, evD, evE, evF, evG
