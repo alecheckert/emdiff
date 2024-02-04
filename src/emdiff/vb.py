@@ -226,8 +226,7 @@ def vbdiff(
 
     # beta factor for the inverse gamma posterior over phi.
     # Initially, we set this to the beta parameter corresponding
-    # to the mean prior value of phi
-    # B0 = phi * (A - 1)
+    # to the max a priori value of phi
     B0 = phi * A
     B = B0.copy()
 
