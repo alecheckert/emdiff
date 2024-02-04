@@ -13,7 +13,7 @@
 
 \begin{document}
 
-\title{vbdiff: variational Bayes analysis of simple Brownian mixtures}
+\title{vbdiff: a fast, simple tool for Brownian mixture modeling}
 \date{February 2024}
 \author{Alec Heckert}
 \maketitle
@@ -23,17 +23,32 @@ mixtures. It relies on a variational Bayesian framework to estimate a distributi
 over three factors: (1) the diffusion coefficients for each state, (2) the mixing
 coefficients, and (3) the origin state for each individual trajectory.
 Unlike more sophisticated frameworks like vbSPT, it does not consider state transitions.
-As a consequence, it is much faster than these more general models. \newline
+As a consequence, it is much faster than these more general models,
+and was intended for inference on large-scale single particle tracking
+(SPT) datasets. \newline
 
-Here, we derive \verb|vbdiff|, starting from basic one-state Brownian motion. Many of these results are standard but scattered over different texts; the goal
+Here, we derive \verb|vbdiff| starting from basic one-state Brownian motion. Many of these results are standard but scattered over different texts; the goal
 of this document is provide a unified, accessible introduction to the variational
 Brownian mixture model. We also give the evidence lower bound (ELBO) for
 \verb|vbdiff| in closed form. This can be used, for example, to choose the
-appropriate number of states when modeling a Brownian mixture \cite{bishop2001}.
+appropriate number of states when modeling a Brownian mixture \cite{bishop2001}. \newline
+
+This document was written rather quickly and paraphrases some
+sections of the author's thesis. If you find errors, I would be
+grateful (and will buy you a coffee) - let me know at
+alecheckert@gmail.com.
 
 \tableofcontents
 
 \section{Brownian motion}\label{section:brownian_motion}
+
+This section reviews Brownian mixture models, starting from
+simple one-state Brownian motion. It defines several terms
+relevant for the next section on the \verb|vbdiff| algorithm.
+The central result is the mixture model represented by relations
+\ref{eq:brownian_mixture} - \ref{eq:brownian_mixture_last}.
+
+\subsection{Single state Brownian motion}
 
 A continuous-time stochastic process $B_{t} \in \mathbb{R}$ ($t \in \mathbb{R}$) is Brownian if
 \begin{align}
@@ -129,7 +144,7 @@ For the sake of readability we use equation \ref{eq:brownian_likelihood_3}
 throughout this text, with the understanding that generalizing to $d \neq 2$
 requires substituting $m$ with $md / 2$.
 
-\section{Bayesian inference on single-state Brownian motion}
+\subsection{Bayesian inference on single-state Brownian motion}
 
 As a building block to mixture models, we first consider a simple
 Bayesian model for one-state Brownian motion. Suppose we have a
@@ -142,10 +157,10 @@ coefficient) $\phi$ given the observed $x$. Bayes' theorem prescribes
 
 where $f_{X}(x | \phi)$ is given by equation \ref{eq:brownian_likelihood_3}.
 For the prior $f_{\phi}(\phi)$, we assume an inverse gamma distribution:
-\begin{align*}
+\begin{align}\begin{split}\label{eq:inverse_gamma_prior}
     \phi &\sim \text{InvGamma} \left( \alpha_{0}, \beta_{0} \right) \\
     \Rightarrow f_{\phi} \left( \phi \right) &= \frac{\beta_{0}^{\alpha_{0}} e^{-\beta_{0} / \phi}}{\Gamma \left( \alpha_{0} \right) \phi^{\alpha_{0} + 1} }, \quad \phi \geq 0
-\end{align*}
+\end{split}\end{align}
 
 Substituting into Bayes' theorem and retaining only factors that depend
 directly on $\phi$,
@@ -167,8 +182,8 @@ which we recognize as another inverse gamma distribution
     \phi \ | \ X \sim \text{InvGamma} \left( \alpha_{0} + m, \beta_{0} + x \right)
 \]
 
-So - due to the conjugacy of the Brownian likelihood \ref{eq:browian_likelihood_3}
-and the inverse gamma prior - inference boils down to simply adding
+So - because the Brownian likelihood \ref{eq:brownian_likelihood_3} is conjugate to the inverse gamma prior \ref{eq:inverse_gamma_prior} -
+inference boils down to simply adding
 shape and scale parameters. We can obtain a point estimate of the
 diffusion coefficient by taking the mean of the posterior distribution:
 \[
@@ -176,10 +191,9 @@ diffusion coefficient by taking the mean of the posterior distribution:
 \]
 
 Notice that the $-1$ in the denominator is analogous to the Bessel
-correction for the sample variance, as the diffusion coefficient is essentially
-a variance.
+correction for the sample variance, as the diffusion coefficient is essentially a variance over position.
 
-\section{Brownian mixtures}
+\subsection{Brownian mixtures}
 
 Most samples of interest in SPT contain a mixture of particles in different
 states characterized by distinct diffusion coefficients. Suppose we have a dataset
@@ -193,7 +207,7 @@ from. To represent this uncertainty, we construct the following mixture model:
     \boldsymbol{\tau} &\sim \text{Dirichlet} \left( \alpha_{0}, ..., \alpha_{0} \right), &\quad \boldsymbol{\tau} \in C^{K-1} \\
     \phi_{j} &\sim \text{InvGamma} \left( \alpha_{0}, \beta_{0} \right), &\quad j \in \left\{ 1, 2, ..., K \right\} \\
     \vec{Z}_{i} \ | \ \boldsymbol{\tau} &\sim \boldsymbol{\tau}, &\quad i \in \left\{ 1, 2, ..., N \right\} \\
-    X_{i} \ | \ Z_{ij} = 1, \phi_{j} &\sim \text{Gamma} \left( m_{i}, \phi_{j} \right), &\quad i \in \left\{ 1, 2, ..., N \right\}
+    X_{i} \ | \ Z_{ij} = 1, \phi_{j} &\sim \text{Gamma} \left( m_{i}, \phi_{j} \right), &\quad i \in \left\{ 1, 2, ..., N \right\} \label{eq:brownian_mixture_last}
 \end{align}
 
 Breaking this down:
@@ -240,13 +254,16 @@ Of all of these parameters, the only one we actually observe is $\vec{X}$.
 Our goal is to infer a posterior distribution over the remaining variables
 given an observed set of trajectories.
 
-\section{Approximative inference on Brownian mixtures}
+\section{Variational Bayes inference on Brownian mixtures}
+
+\subsection{vbdiff}
 
 Given an observed set of trajectories $\vec{X} = (X_{1}, ..., X_{N})$, we
 want to infer the probability of the unobserved (latent) variables
-$\vec{Z}, \boldsymbol{\tau}, \boldsymbol{\phi}$ in the mixture \ref{eq:brownian_mixture}.
+$\vec{Z}, \boldsymbol{\tau}, \boldsymbol{\phi}$ in the mixture \ref{eq:brownian_mixture} - \ref{eq:brownian_mixture_last}.
 In other words, we want to infer the posterior distribution
-$p \left( \vec{Z}, \boldsymbol{\tau}, \boldsymbol{\phi} | \vec{X} \right)$.
+$p \left( \vec{Z}, \boldsymbol{\tau}, \boldsymbol{\phi} | \vec{X} \right)$. \newline
+
 Solving this problem exactly is intractable. There are two fallbacks:
 (a) approximate the distribution with a finite sequence of samples using
 MCMC methods or (b) construct a tractable approximation to the posterior.
@@ -274,7 +291,7 @@ By factoring $p \left( \vec{X}, \vec{Z}, \boldsymbol{\tau}, \boldsymbol{\phi} \r
     \mathcal{L}[q] &\leq \log p (\vec{X})
 \end{align*}
 
-This last point is crucial, as it will form the basis for model selection considered later on. For now, notice that $p(\vec{X})$ can be seen as the average probability of the observed data over all possible model parameters $\vec{X}, \boldsymbol{\tau}, \boldsymbol{\phi}$ with some $K$. \newline
+This last point is crucial, as it will form the basis for model selection considered later on. For now, notice that $p(\vec{X})$ can be seen as the average probability of the observed data over all possible latent parameters $\vec{Z}, \boldsymbol{\tau}, \boldsymbol{\phi}$ with some $K$. \newline
 
 What form will we choose for $q$? As it turns out, we only need to make a
 single constraint to find a tractable $q$: assume that $q$ factors into
@@ -328,6 +345,8 @@ until convergence. This can be done by substituting the following expectations a
     \mathbb{E}_{q} \left[ \log \phi_{j} \right] &= \log (\beta_{0} + \beta_{j}) - \psi (\alpha_{0} + \alpha_{j})
 \end{align*}
 
+where $\psi(\alpha) = \frac{\D}{\D \alpha} \log \Gamma (\alpha)$ is the digamma function.
+
 \subsection{Choice of hyperparameters}
 
 There are three hyperparameters in the mixture model \ref{eq:brownian_mixture}:
@@ -337,14 +356,14 @@ There are three hyperparameters in the mixture model \ref{eq:brownian_mixture}:
     \item $K$, the number of states.
 \end{itemize}
 
-The last ($K$) is treated in the next section \ref{section:elbo}. The number of pseudocounts is often set to $\alpha_{0} = 2$ in \verb|vbdiff|, to avoid division by zero when evaluating prior means. For $\beta_{0}$, suppose we have some prior guess for the diffusion coefficient $D_{0}$. Since $\phi = 4 D \Delta t$ and the prior mean value of $\phi$ is $\beta_{0} / (\alpha_{0} - 1)$, a sensible choice is to set $\beta_{0} = 4 \Delta t (\alpha_{0} - 1) D_{0}$. This corresponds to the average sum of squared displacements for a trajectory with $\alpha_{0}$ jumps and diffusion coefficient $D_{0}$, sampled with frame interval $\Delta t$.
+The last ($K$) is treated in the next section \ref{subsection:elbo}. The number of pseudocounts is often set to $\alpha_{0} = 2$ in \verb|vbdiff|, to avoid division by zero when evaluating prior means. For $\beta_{0}$, suppose we have some prior guess for the diffusion coefficient $D_{0}$. Since $\phi = 4 D \Delta t$ and the prior mean value of $\phi$ is $\beta_{0} / (\alpha_{0} - 1)$, a sensible choice is to set $\beta_{0} = 4 \Delta t (\alpha_{0} - 1) D_{0}$. This corresponds to the average sum of squared displacements for a trajectory with $\alpha_{0}$ jumps and diffusion coefficient $D_{0}$, sampled with frame interval $\Delta t$.
 
-\section{Evidence lower bound (ELBO)}\label{section:elbo}
+\subsection{Evidence lower bound (ELBO)}\label{subsection:elbo}
 
 A central hyperparameter in the mixture model \ref{eq:brownian_mixture} is the number of states $K$. How do we choose $K$ in a principled way? \newline
 
 Besides providing an objective function for variational Bayesian inference,
-the evidence lower bound \ref{eq:elbo} can also be used for \emph{model selection}. Because $\mathcal{L}[q] \leq \log p \left( \vec{X} \right)$, the ELBO provides an approximation to the probability of the observed data $\vec{X}$ averaged over all model parameters $\vec{X}, \boldsymbol{\tau}, \boldsymbol{\phi}$ corresponding to a particular $K$. If $K$ is too small, then there may not exist model parameters that adequately describe the data. If $K$ is too high, then even if model parameters exist that adequately describe the data, most do not. In short, we should take the $K$ with the highest $\mathcal{L}[q]$. \newline
+the evidence lower bound \ref{eq:elbo} can also be used for \emph{model selection}. Because $\mathcal{L}[q] \leq \log p \left( \vec{X} \right)$, the ELBO provides an approximation to the probability of the observed data $\vec{X}$ averaged over all model parameters $\vec{Z}, \boldsymbol{\tau}, \boldsymbol{\phi}$ corresponding to a particular $K$. If $K$ is too small, then there may not exist model parameters that adequately describe the data. If $K$ is too high, then even if model parameters exist that adequately describe the data, most do not. In short, we should take the $K$ with the highest $\mathcal{L}[q]$. This means we have both model parameters that adequately describe the data and do not have vast tracts of parameter space that do not describe the data. \newline
 
 Expanding the ELBO equation \ref{eq:elbo}, we have
 \begin{align}
@@ -390,12 +409,12 @@ where $\psi$ is the digamma function.
 \caption{Using the ELBO to determine the number of states $K$ in a Brownian mixture. We simulated Brownian mixtures with different numbers of states ($K_{\text{true}}$), then attempted to recover the correct $K$ using vbdiff. To do this, we fit each simulated mixture to models with $K=1$, 2, 3, 4, 5, 6, or 7 and took the $K$ with the highest ELBO. Brownian mixture simulations were performed with the \href{https://github.com/alecheckert/strobesim}{strobesim} package, which simulates SPT-like conditions including 20 nm localization error, 700 nm depth of field, bleaching rate 10 Hz, frame rate 200 Hz, and approximately 7000 observed trajectories per simulation. Mean trajectory length is $\sim 3-4$ frames under these conditions (depending on the simulation). (A) Each of the six Brownian mixtures simulated. Red bars indicate ground truth states and the height of the bars indicates each state's \emph{occupation} - the fraction of particles originating from that state. (B) Histogram of recovered $K$ over 64 replicates of each simulated mixture. Notice that uncertainty in $K$ rises as $K_{\text{true}}$ rises.}
 \end{figure}
 
-\section{Addressing experimental biases}
+\subsection{Experimental biases}
 
 \verb|vbdiff| also incorporates two experimental biases common
 in SPT experiments: localization error and defocalization.
 
-\subsection{Localization error}
+\subsubsection{Localization error}
 
 In real SPT experiments, the position of a particle isn't known exactly,
 but is always associated with some measurement error (known as
@@ -432,7 +451,7 @@ remains exactly the same, except we define
 $\phi_{j} = 4 (D \Delta t + \sigma_{\text{loc}}^{2})$ as the parameter
 for each state.
 
-\subsection{Defocalization}
+\subsubsection{Defocalization}
 
 In real SPT experiments, particles are only observed when their
 positions coincide with the imaging system's depth of field.
@@ -517,7 +536,7 @@ at each iteration using a numerical propagator approach
 
 \appendix
 
-\section{Appendix A: Derivation of approximate posterior for Brownian mixtures}\label{appendix:derivation_approx_posterior}
+\section{Appendix A: Derivation of vbdiff approximate posterior}\label{appendix:derivation_approx_posterior}
 
 To identify the exact form of the approximative posterior $q(\vec{X}, \boldsymbol{\tau}, \boldsymbol{\phi})$ for Brownian mixtures, we will solve the system of equations \ref{eq:em_equations} given the model specified by \ref{eq:eqA}, \ref{eq:eqB}, \ref{eq:eqC}, and \ref{eq:eqD}. \newline
 
