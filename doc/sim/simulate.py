@@ -41,25 +41,10 @@ def fit_vbdiff(
     diff_coefs = None
     occs = None
     elbo = -np.inf
-    evidence_terms = None
+    elbo_terms = None
     for _ in range(5):
         guess_diff_coefs = np.random.gamma(1.0, 8.0, size=n_states)
-        (
-            r,
-            n,
-            A,
-            B,
-            occs_,
-            diff_coefs_,
-            elbo_,
-            evA,
-            evB,
-            evC,
-            evD,
-            evE,
-            evF,
-            evG,
-        ) = vbdiff(
+        (r, n, A, B, occs_, diff_coefs_, elbo_terms) = vbdiff(
             spots.copy(),
             n_states=n_states,
             pixel_size_um=1.0,
@@ -70,23 +55,13 @@ def fit_vbdiff(
             dz=FOCAL_DEPTH_UM,
             guess=guess_diff_coefs,
         )
-        if elbo_ > elbo:
+        if elbo_terms["elbo"] > elbo:
             diff_coefs = diff_coefs_
             occs = occs_
-            elbo = elbo_
-            evidence_terms = {
-                "A": evA,
-                "B": evB,
-                "C": evC,
-                "D": evD,
-                "E": evE,
-                "F": evF,
-                "G": evG,
-                "n_states": n_states,
-                "elbo": elbo,
-            }
+            elbo = elbo_terms["elbo"]
+            elbo_terms["n_states"] = n_states
 
-    return diff_coefs, occs, elbo, evidence_terms
+    return diff_coefs, occs, elbo, elbo_terms
 
 
 def simulate_and_fit_1states():

@@ -318,7 +318,7 @@ def vbdiff(
     exp_log_occs = digamma(n) - digamma(n.sum())
     exp_log_phi = np.log(B) - digamma(A)
     exp_inv_phi = A / B
-    elbo, evA, evB, evC, evD, evE, evF, evG = calc_elbo(
+    elbo = calc_elbo(
         sum_r2, n_jumps, r, n, A, B, n0, A0, B0, exp_log_occs, exp_inv_phi, exp_log_phi
     )
 
@@ -346,7 +346,7 @@ def vbdiff(
     # Return the parameters for the mean field approximation to the posterior
     # distribution
     if return_posterior:
-        return r, n, A, B, occs, D_mean, elbo, evA, evB, evC, evD, evE, evF, evG
+        return r, n, A, B, occs, D_mean, elbo
     else:
         return occs, D_mean
 
@@ -365,11 +365,11 @@ def calc_elbo(
     exp_inv_phi,
     exp_log_phi,
     identifiability_corr=True,
-    mode: int = 1,
-):
+) -> dict:
     """
     Calculate the variational evidence lower bound for
-    a particular mixture model.
+    a particular mixture model. For more details on this
+    calculation, see `emdiff/doc/vbdiff.pdf`.
 
     args
     ----
@@ -383,11 +383,15 @@ def calc_elbo(
 
     returns
     -------
-        (
-            float, evidence lower bound;
-            float, model likelihood
-        )
-
+    dict with keys
+        "elbo": actual evidence lower bound,
+        "A": E[log p(X|Z,tau,phi)]
+        "B": E[log p(Z|tau)]
+        "C": E[log p(tau)]
+        "D": E[log p(phi)]
+        "E": E[log q(Z)]
+        "F": E[log q(tau)]
+        "G": E[log q(phi)]
     """
     K, N = r.shape
 
@@ -400,16 +404,10 @@ def calc_elbo(
             - loggamma(n_jumps)
             - exp_log_phi[j] * n_jumps
         )
-    if mode == 0:
-        evA = ((r * n_jumps) * _evA).sum()
-    elif mode == 1:
-        evA = (r * _evA).sum()
+    evA = (r * _evA).sum()
 
     # Due to the prior over state assignments (decreases with higher K; large magnitude)
-    if mode == 0:
-        evB = (exp_log_occs * (r * n_jumps).sum(axis=1)).sum()
-    elif mode == 1:
-        evB = (exp_log_occs * r.sum(axis=1)).sum()
+    evB = (exp_log_occs * r.sum(axis=1)).sum()
 
     # Due to the prior over mixing coefficients (decreases with higher K; low magnitude)
     evC = (n0[0] - 1) * exp_log_occs.sum() - logbeta(*n0)
@@ -418,17 +416,8 @@ def calc_elbo(
     evD = (A0 * np.log(B0) - loggamma(A0) - B0 * A / B - (A0 + 1) * exp_log_phi).sum()
 
     # Due to the posterior over state assignments (decreases with higher K; high magnitude)
-    if mode == 0:
-        r_adj = r + 1e-8
-        evE = ((r_adj * n_jumps) * np.log(r_adj)).sum()
-    elif mode == 1:
-        # nonzero = (r > 0).all(axis=0)
-        # evE = ((r[:, nonzero] * n_jumps[nonzero]) * np.log(r[:,nonzero])).sum()
-        
-        # print(f"(r<=0).sum() = {(r<=0).sum()}")
-        # print(f"(r>0).sum() = {(r>0).sum()}")
-        r_adj = r + 1e-8
-        evE = (r_adj * np.log(r_adj)).sum()
+    r_adj = r + 1e-8
+    evE = (r_adj * np.log(r_adj)).sum()
 
     # Due to the posterior over mixing coefficients (increases with higher K; low magnitude)
     evF = ((n - 1) * exp_log_occs).sum() - logbeta(*n)
@@ -455,4 +444,13 @@ def calc_elbo(
     if identifiability_corr:
         elbo += loggamma(K + 1)
 
-    return elbo, evA, evB, evC, evD, evE, evF, evG
+    return {
+        "elbo": elbo,
+        "A": evA,
+        "B": evB,
+        "C": evC,
+        "D": evD,
+        "E": evE,
+        "F": evF,
+        "G": evG,
+    }
