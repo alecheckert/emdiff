@@ -4,6 +4,9 @@
 \usepackage{chemarr}
 \usepackage{hyperref}
 
+\usepackage{graphicx}
+\graphicspath{ {./static} }
+
 \setlength{\parindent}{0pt}
 \newcommand{\D}{\text{d}}
 \let\vec\boldsymbol 
@@ -30,7 +33,7 @@ appropriate number of states when modeling a Brownian mixture \cite{bishop2001}.
 
 \tableofcontents
 
-\section{Brownian motion}
+\section{Brownian motion}\label{section:brownian_motion}
 
 A continuous-time stochastic process $B_{t} \in \mathbb{R}$ ($t \in \mathbb{R}$) is Brownian if
 \begin{align}
@@ -381,6 +384,136 @@ where, as before, $B(x_{1}, ..., x_{K})$ is the multivariate beta function and t
 \end{align*}
 
 where $\psi$ is the digamma function.
+
+\begin{figure}
+\includegraphics[width=0.55\pagewidth]{elbo_comparison.png}
+\caption{Using the ELBO to determine the number of states $K$ in a Brownian mixture. We simulated Brownian mixtures with different numbers of states ($K_{\text{true}}$), then attempted to recover the correct $K$ using vbdiff. To do this, we fit each simulated mixture to models with $K=1$, 2, 3, 4, 5, 6, or 7 and took the $K$ with the highest ELBO. Brownian mixture simulations were performed with the \href{https://github.com/alecheckert/strobesim}{strobesim} package, which simulates SPT-like conditions including 20 nm localization error, 700 nm depth of field, bleaching rate 10 Hz, frame rate 200 Hz, and approximately 7000 observed trajectories per simulation. Mean trajectory length is $\sim 3-4$ frames under these conditions (depending on the simulation). (A) Each of the six Brownian mixtures simulated. Red bars indicate ground truth states and the height of the bars indicates each state's \emph{occupation} - the fraction of particles originating from that state. (B) Histogram of recovered $K$ over 64 replicates of each simulated mixture. Notice that uncertainty in $K$ rises as $K_{\text{true}}$ rises.}
+\end{figure}
+
+\section{Addressing experimental biases}
+
+\verb|vbdiff| also incorporates two experimental biases common
+in SPT experiments: localization error and defocalization.
+
+\subsection{Localization error}
+
+In real SPT experiments, the position of a particle isn't known exactly,
+but is always associated with some measurement error (known as
+\emph{localization error}). We model a Brownian motion with
+localization error as the process $\tilde{B}_{t} = B_{t} + \sigma_{\text{loc}} W_{t}$
+where $B_{t}$ is a Brownian motion, $W_{t}$ is a Gaussian white noise process,
+and $\sigma_{\text{loc}}^{2}$ is the localization error variance. \newline
+
+If the particle's position is measured at regular timepoints $0, \Delta t, 2 \Delta t, ...$
+so that the $i^{\text{th}}$ increment is $\Delta \tilde{B}_{i} = \tilde{B}_{i \Delta t} - \tilde{B}_{(i-1) \Delta t}$, then the increments have the covariance
+\[
+    \text{Cov} \left( \Delta \tilde{B}_{i}, \Delta \tilde{B}_{j} \right) = \begin{cases}
+        2 D \Delta t + 2 \sigma_{\text{loc}}^{2} \qquad &\text{if } i = j \\
+        - \sigma_{\text{loc}}^{2} \qquad &\text{if } \left| i - j \right| = 1 \\
+        0 \qquad &\text{otherwise}
+    \end{cases}
+\]
+
+Models that incorporate the full covariance function, including the negative
+covariance between sequential jumps, include \href{https://github.com/alecheckert/saspt}{state arrays}. State arrays also allow each trajectory to have a distinct
+localization error. In \verb|vbdiff| we take a simpler approach by neglecting the
+off-diagonal covariances and assuming that localization error variance is a known
+constant, identical for all trajectories. Then the same arguments
+from Section \ref{section:brownian_motion} generate the likelihood function
+\begin{equation}
+    X_{i} | D_{j}, \sigma_{\text{loc}}^{2} \sim \text{Gamma} \left( \frac{m_{i} d}{2}, \frac{1}{4 (D_{j} \Delta t + \sigma_{\text{loc}}^{2} )} \right)
+\end{equation}
+
+where $X$ is the sum of squared displacements in trajectory $i$,
+$D_{j}$ is the diffusion coefficient for the $j^{\text{th}}$ state,
+$m_{i}$ is the number of trajectories in trajectory $i$, and $d$
+is the spatial dimension (usually 2). The core \verb|vbdiff| algorithm
+remains exactly the same, except we define
+$\phi_{j} = 4 (D \Delta t + \sigma_{\text{loc}}^{2})$ as the parameter
+for each state.
+
+\subsection{Defocalization}
+
+In real SPT experiments, particles are only observed when their
+positions coincide with the imaging system's depth of field.
+As a result, the jumps of fast particles are more likely to land outside
+the depth of field than the jumps of slow particles, creating a state
+bias toward slow particles. \newline
+
+In \verb|vbdiff|, we address this bias in the following way.
+Suppose, as before, that the ``observed'' state occupations
+are represented by $\boldsymbol{\tau} = (\tau_{1}, \tau_{2}, ..., \tau_{K})$.
+Let $\eta_{j}(\phi_{j})$ be the probability to observe a jump from state $j$ given its mobility parameter $\phi_{j}$ and the imaging system's depth of field.
+Then the ``true'' state occupations are some vector
+$\boldsymbol{\mu} = (\mu_{1}, \mu_{2}, ..., \mu_{K})$ such that
+$\sum_{j=1}^{K} \mu_{j} = 1$ and
+\begin{equation}\label{eq:observed_occ}
+    \tau_{j} = \frac{ \eta_{j} (\phi_{j}) \mu_{j} }{ \sum\limits_{k=1}^{K} \eta_{k} (\phi_{k}) \mu_{k} }
+\end{equation}
+
+(Note: We could also incorporate photobleaching into $\eta_{j} (\phi_{j})$. But
+since we usually assume photobleaching affects all states equally,
+it factors out from the numerator and denominator in equation
+\ref{eq:observed_occ} and we're left with only the defocalization part.) \newline
+
+We can include this in the stochastic model by modifying
+equation \ref{eq:eqB} so that it incorporates both the
+probability to sample a particle in state $j$ ($\mu_{j}$)
+as well as the probability to observe a jump from that
+particle ($\eta_{j}(\phi_{j})$):
+\[
+    \log p \left( \vec{Z} | \boldsymbol{\mu}, \boldsymbol{\phi} \right) \propto \sum\limits_{i=1}^{N} \sum\limits_{j=1}^{K} Z_{ij} \left(
+        \log \eta_{j} (\phi_{j}) + \log \mu_{j}
+    \right)
+\]
+
+To make things simpler, we will assume that $\eta_{j}$ is constant
+at each iteration of \verb|vbdiff|. For instance, we can 
+evaluate $\eta_{j}$ at the current posterior mean value of $\phi_{j}$.
+Then
+\[
+    \log p \left( \vec{Z} | \boldsymbol{\mu} \right) \propto \sum\limits_{i=1}^{N} \sum\limits_{j=1}^{K} Z_{ij} \left(
+        \log \eta_{j} + \log \mu_{j}
+    \right)
+\]
+
+To understand how to incorporate this into the \verb|vbdiff|
+algorithm, it is useful to examine the max likelihood solution to
+$\hat{\boldsymbol{\mu}} = \underset{\boldsymbol{\mu}}{\text{argmax}} \: p \left( \vec{Z} | \boldsymbol{\mu} \right)$. 
+We seek the $\boldsymbol{\mu}$ that maximizes the Lagrangian
+\[
+    L(\boldsymbol{\mu}, \lambda) = \sum\limits_{i=1}^{N} \sum\limits_{j=1}^{K} Z_{ij} \left(
+        \log \eta_{j} + \log \mu_{j}
+    \right) - \lambda \sum\limits_{j=1}^{K} \eta_{j} \mu_{j}
+\]
+
+where $\lambda$ is a Lagrange multiplier corresponding to the
+normalization constraint $\sum_{j=1}^{K} \eta_{j} \mu_{j} = 1$.
+Taking the first derivative with respect to $\mu_{j}$ and $\lambda$,
+setting to zero, and solving the resulting system of equations gives
+\[
+    \hat{\mu}_{j} = \frac{\eta_{j}^{-1} \tau_{j}}{\sum\limits_{k=1}^{K} \eta_{k}^{-1} \tau_{k}}
+\]
+
+where we have used $\tau_{j} = \frac{1}{N} \sum\limits_{i=1}^{N} Z_{ij}$
+to paraphrase the result. This simple correction suggests that
+in the update scheme for \verb|vbdiff| we should adjust the
+occupations for state $j$ by a factor proportional to $\eta_{j}^{-1}$:
+\[
+    q \left( \boldsymbol{\tau} \right) = \text{Dirichlet} \left(
+        \alpha_{0} + \overline{\eta}_{1}^{-1} \alpha_{1},
+        ...,
+        \alpha_{0} + \overline{\eta}_{K}^{-1} \alpha_{K}
+    \right)
+\]
+
+where $\overline{\eta}_{j} \propto \eta_{j}$ such that the overall
+statistical weight of the trajectories (number of jumps in the dataset)
+is unchanged. \newline
+
+In \verb|vbdiff|, we evaluate $\eta_{j} = \eta_{j} (\phi_{j})$
+at each iteration using a numerical propagator approach
+(see \verb|emdiff/defoc.py|).
 
 \appendix
 
