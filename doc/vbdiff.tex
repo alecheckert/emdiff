@@ -57,7 +57,7 @@ A continuous-time stochastic process $B_{t} \in \mathbb{R}$ ($t \in \mathbb{R}$)
 \end{align}
 
 where $\mathcal{N} \left( 0, 2 D \left| t - s \right| \right)$ is a normal distribution
-with mean 0 and variance $2 D \left| t - s \right|$. \newline
+with mean 0 and variance $2 D \left| t - s \right|$. $D \geq 0$ is a parameter called the \emph{diffusion coefficient}, parametrizing the scale of the motion. \newline
 
 Suppose we measure a Brownian trajectory in a single particle tracking (SPT) experiment.
 We sample the particle's position at $m+1$ timepoints
@@ -92,7 +92,7 @@ Differentiating both sides, we obtain the pdf
 Substituting the normal distribution from equation \ref{eq:rule1} as $f_{\Delta B}$,
 we have
 \[
-    f_{\Delta B^{2}}(x) = \frac{ e^{-x / 4 D \Delta t} }{ \sqrt{4 \pi D \Delta t x} }
+    f_{\Delta B^{2}}(x) = \frac{ e^{-x / 4 D \Delta t} }{ \sqrt{4 \pi D \Delta t x} }, \quad x \geq 0
 \]
 
 which we recognize as a gamma distribution with parameters $\alpha = 1/2$ and
