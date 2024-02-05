@@ -49,3 +49,37 @@ class TestVBDiff(TestCase):
                 loc_error=0.035,
                 dz=0.7,
             )
+
+    def test_retries(self):
+        """Multiple runs with different initial guesses
+        should return the same answer if we call np.random.seed
+        in advance."""
+        target = FIXTURES / "sample_tracks.zip"
+        assert target.is_file()
+        spots = pd.read_csv(str(target))
+        n_states = 7
+        retries = 5
+        np.random.seed(1)
+        occs1, diffcoefs1 = vbdiff(
+            spots,
+            n_states=n_states,  # number of diffusive states
+            pixel_size_um=0.16,  # microns
+            frame_interval=0.00748,  # seconds
+            loc_error=0.035,  # microns
+            dz=0.7,  # focal depth, microns
+            max_iter=10,
+            retries=retries,
+        )
+        np.random.seed(1)
+        occs2, diffcoefs2 = vbdiff(
+            spots,
+            n_states=n_states,  # number of diffusive states
+            pixel_size_um=0.16,  # microns
+            frame_interval=0.00748,  # seconds
+            loc_error=0.035,  # microns
+            dz=0.7,  # focal depth, microns
+            max_iter=10,
+            retries=retries,
+        )
+        np.testing.assert_allclose(occs1, occs2, atol=1e-6, rtol=1e-6)
+        np.testing.assert_allclose(diffcoefs1, diffcoefs2, atol=1e-6, rtol=1e-6)

@@ -24,21 +24,22 @@ INIT_DIFF_COEFS = {
 
 
 def vbdiff(
-    tracks,
-    n_states=2,
-    pixel_size_um=0.16,
-    frame_interval=0.01,
-    pos_cols=["y", "x"],
-    loc_error=0.035,
-    max_jumps_per_track=None,
-    start_frame=0,
-    max_iter=10000,
-    convergence=1.0e-8,
-    dz=np.inf,
-    guess=None,
-    pseudocounts=2.0,
-    return_posterior=False,
-    allow_neg_diff_coef=False,
+    tracks: pd.DataFrame,
+    n_states: int = 2,
+    pixel_size_um: float = 0.16,
+    frame_interval: float = 0.01,
+    pos_cols: list = ["y", "x"],
+    loc_error: float = 0.035,
+    max_jumps_per_track: int = None,
+    start_frame: int = 0,
+    max_iter: int = 10000,
+    convergence: float = 1e-8,
+    dz: float = np.inf,
+    guess: np.ndarray = None,
+    pseudocounts: float = 2.0,
+    return_posterior: bool = False,
+    allow_neg_diff_coef: bool = False,
+    retries: int = 0,
 ):
     """
     Evaluate a variational Bayesian approximation to the posterior
@@ -100,6 +101,10 @@ def vbdiff(
                                 negative values if the observed motion is
                                 actually slower than the user-provided localization
                                 error
+        retries             :   run multiple iterations of vbdiff with
+                                different (random) initial diffusion
+                                coefficients and return the one with the
+                                highest ELBO
 
     returns
     -------
@@ -140,7 +145,6 @@ def vbdiff(
                 D_mean, 1D ndarray of shape (n_states); the mean diffusion
                     coefficients under the posterior model
             )
-
     """
     # For internal convenience
     le2 = loc_error**2
@@ -341,6 +345,40 @@ def vbdiff(
     # if desired
     if not allow_neg_diff_coef:
         D_mean[D_mean < 0] = 0
+
+    # Rerun algorithm multiple times with different initial guesses,
+    # if desired. Note that this may return different answers for
+    # multiple runs to vbdiff. If this is not desired, call
+    # np.random.seed prior to running vbdiff.
+    if retries > 0:
+        for _ in range(retries):
+            guess_diff_coefs = np.random.gamma(1, 8, size=n_states)
+            r_, n_, A_, B_, occs_, D_mean_, elbo_ = vbdiff(
+                tracks=tracks,
+                n_states=n_states,
+                pixel_size_um=pixel_size_um,
+                frame_interval=frame_interval,
+                pos_cols=pos_cols,
+                loc_error=loc_error,
+                max_jumps_per_track=max_jumps_per_track,
+                start_frame=start_frame,
+                max_iter=max_iter,
+                convergence=convergence,
+                dz=dz,
+                guess=guess_diff_coefs,
+                pseudocounts=pseudocounts,
+                return_posterior=True,
+                allow_neg_diff_coef=allow_neg_diff_coef,
+                retries=0,
+            )
+            if elbo_["elbo"] > elbo["elbo"]:
+                r = r_
+                n = n_
+                A = A_
+                B = B_
+                occs = occs_
+                D_mean = D_mean_
+                elbo = elbo_
 
     # Return the parameters for the mean field approximation to the posterior
     # distribution
