@@ -38,29 +38,17 @@ def fit_vbdiff(
     dict with keys "A", "B", "C", "D", "E", "F", and "G",
         individual terms contributing to ELBO
     """
-    diff_coefs = None
-    occs = None
-    elbo = -np.inf
-    elbo_terms = None
-    for _ in range(5):
-        guess_diff_coefs = np.random.gamma(1.0, 8.0, size=n_states)
-        (r, n, A, B, occs_, diff_coefs_, elbo_terms) = vbdiff(
-            spots.copy(),
-            n_states=n_states,
-            pixel_size_um=1.0,
-            frame_interval=FRAME_INTERVAL,
-            loc_error=LOC_ERROR,
-            pseudocounts=2.0,
-            return_posterior=True,
-            dz=FOCAL_DEPTH_UM,
-            guess=guess_diff_coefs,
-        )
-        if elbo_terms["elbo"] > elbo:
-            diff_coefs = diff_coefs_
-            occs = occs_
-            elbo = elbo_terms["elbo"]
-            elbo_terms["n_states"] = n_states
-
+    r, n, A, B, occs, diff_coefs, elbo_terms = vbdiff(
+        spots.copy(),
+        n_states=n_states,
+        pixel_size_um=1.0,
+        frame_interval=FRAME_INTERVAL,
+        loc_error=LOC_ERROR,
+        pseudocounts=2.0,
+        return_posterior=True,
+        dz=FOCAL_DEPTH_UM,
+        retries=6,
+    )
     return diff_coefs, occs, elbo, elbo_terms
 
 
