@@ -24,21 +24,22 @@ INIT_DIFF_COEFS = {
 
 
 def vbdiff(
-    tracks,
-    n_states=2,
-    pixel_size_um=0.16,
-    frame_interval=0.01,
-    pos_cols=["y", "x"],
-    loc_error=0.035,
-    max_jumps_per_track=None,
-    start_frame=0,
-    max_iter=10000,
-    convergence=1.0e-8,
-    dz=np.inf,
-    guess=None,
-    pseudocounts=2.0,
-    return_posterior=False,
-    allow_neg_diff_coef=False,
+    tracks: pd.DataFrame,
+    n_states: int = 2,
+    pixel_size_um: float = 0.16,
+    frame_interval: float = 0.01,
+    pos_cols: list = ["y", "x"],
+    loc_error: float = 0.035,
+    max_jumps_per_track: int = None,
+    start_frame: int = 0,
+    max_iter: int = 10000,
+    convergence: float = 1e-8,
+    dz: float = np.inf,
+    guess: np.ndarray = None,
+    pseudocounts: float = 2.0,
+    return_posterior: bool = False,
+    allow_neg_diff_coef: bool = False,
+    retries: int = 0,
 ):
     """
     Evaluate a variational Bayesian approximation to the posterior
@@ -100,6 +101,10 @@ def vbdiff(
                                 negative values if the observed motion is
                                 actually slower than the user-provided localization
                                 error
+        retries             :   run multiple iterations of vbdiff with
+                                different (random) initial diffusion
+                                coefficients and return the one with the
+                                highest ELBO
 
     returns
     -------
@@ -140,7 +145,6 @@ def vbdiff(
                 D_mean, 1D ndarray of shape (n_states); the mean diffusion
                     coefficients under the posterior model
             )
-
     """
     # For internal convenience
     le2 = loc_error**2
@@ -226,8 +230,8 @@ def vbdiff(
 
     # beta factor for the inverse gamma posterior over phi.
     # Initially, we set this to the beta parameter corresponding
-    # to the mean prior value of phi
-    B0 = phi * (A - 1)
+    # to the max a priori value of phi
+    B0 = phi * A
     B = B0.copy()
 
     ## INITIALIZATION
@@ -317,7 +321,7 @@ def vbdiff(
     exp_log_occs = digamma(n) - digamma(n.sum())
     exp_log_phi = np.log(B) - digamma(A)
     exp_inv_phi = A / B
-    elbo, model_likelihood = calc_elbo(
+    elbo = calc_elbo(
         sum_r2, n_jumps, r, n, A, B, n0, A0, B0, exp_log_occs, exp_inv_phi, exp_log_phi
     )
 
@@ -342,10 +346,44 @@ def vbdiff(
     if not allow_neg_diff_coef:
         D_mean[D_mean < 0] = 0
 
+    # Rerun algorithm multiple times with different initial guesses,
+    # if desired. Note that this may return different answers for
+    # multiple runs to vbdiff. If this is not desired, call
+    # np.random.seed prior to running vbdiff.
+    if retries > 0:
+        for _ in range(retries):
+            guess_diff_coefs = np.random.gamma(1, 8, size=n_states)
+            r_, n_, A_, B_, occs_, D_mean_, elbo_ = vbdiff(
+                tracks=tracks,
+                n_states=n_states,
+                pixel_size_um=pixel_size_um,
+                frame_interval=frame_interval,
+                pos_cols=pos_cols,
+                loc_error=loc_error,
+                max_jumps_per_track=max_jumps_per_track,
+                start_frame=start_frame,
+                max_iter=max_iter,
+                convergence=convergence,
+                dz=dz,
+                guess=guess_diff_coefs,
+                pseudocounts=pseudocounts,
+                return_posterior=True,
+                allow_neg_diff_coef=allow_neg_diff_coef,
+                retries=0,
+            )
+            if elbo_["elbo"] > elbo["elbo"]:
+                r = r_
+                n = n_
+                A = A_
+                B = B_
+                occs = occs_
+                D_mean = D_mean_
+                elbo = elbo_
+
     # Return the parameters for the mean field approximation to the posterior
     # distribution
     if return_posterior:
-        return r, n, A, B, occs, D_mean, elbo, model_likelihood
+        return r, n, A, B, occs, D_mean, elbo
     else:
         return occs, D_mean
 
@@ -364,10 +402,11 @@ def calc_elbo(
     exp_inv_phi,
     exp_log_phi,
     identifiability_corr=True,
-):
+) -> dict:
     """
     Calculate the variational evidence lower bound for
-    a particular mixture model.
+    a particular mixture model. For more details on this
+    calculation, see `emdiff/doc/vbdiff.pdf`.
 
     args
     ----
@@ -381,11 +420,15 @@ def calc_elbo(
 
     returns
     -------
-        (
-            float, evidence lower bound;
-            float, model likelihood
-        )
-
+    dict with keys
+        "elbo": actual evidence lower bound,
+        "A": E[log p(X|Z,tau,phi)]
+        "B": E[log p(Z|tau)]
+        "C": E[log p(tau)]
+        "D": E[log p(phi)]
+        "E": E[log q(Z)]
+        "F": E[log q(tau)]
+        "G": E[log q(phi)]
     """
     K, N = r.shape
 
@@ -398,10 +441,10 @@ def calc_elbo(
             - loggamma(n_jumps)
             - exp_log_phi[j] * n_jumps
         )
-    evA = ((r * n_jumps) * _evA).sum()
+    evA = (r * _evA).sum()
 
     # Due to the prior over state assignments (decreases with higher K; large magnitude)
-    evB = (exp_log_occs * (r * n_jumps).sum(axis=1)).sum()
+    evB = (exp_log_occs * r.sum(axis=1)).sum()
 
     # Due to the prior over mixing coefficients (decreases with higher K; low magnitude)
     evC = (n0[0] - 1) * exp_log_occs.sum() - logbeta(*n0)
@@ -410,8 +453,8 @@ def calc_elbo(
     evD = (A0 * np.log(B0) - loggamma(A0) - B0 * A / B - (A0 + 1) * exp_log_phi).sum()
 
     # Due to the posterior over state assignments (decreases with higher K; high magnitude)
-    nonzero = r > 0
-    evE = (r[nonzero] * np.log(r[nonzero])).sum()
+    r_adj = r + 1e-8
+    evE = (r_adj * np.log(r_adj)).sum()
 
     # Due to the posterior over mixing coefficients (increases with higher K; low magnitude)
     evF = ((n - 1) * exp_log_occs).sum() - logbeta(*n)
@@ -424,17 +467,27 @@ def calc_elbo(
 
     # For checking numerical accuracy
     if False:
-        print("evA: ", evA)
-        print("evB: ", evB)
-        print("evC: ", evC)
-        print("evD: ", evD)
-        print("evE: ", evE)
-        print("evF: ", evF)
-        print("evG: ", evG)
+        print(f"K = {K}")
+        print(f"evA:\t{evA:.3f}")
+        print(f"evB:\t{evB:.3f}")
+        print(f"evC:\t{evC:.3f}")
+        print(f"evD:\t{evD:.3f}")
+        print(f"evE:\t{evE:.3f}")
+        print(f"evF:\t{evF:.3f}")
+        print(f"evG:\t{evG:.3f}")
 
     # Apply an identifiability correction (usually small in magnitude
     # compare to the other terms)
     if identifiability_corr:
         elbo += loggamma(K + 1)
 
-    return elbo, evA
+    return {
+        "elbo": elbo,
+        "A": evA,
+        "B": evB,
+        "C": evC,
+        "D": evD,
+        "E": evE,
+        "F": evF,
+        "G": evG,
+    }
